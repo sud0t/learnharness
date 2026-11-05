@@ -214,6 +214,7 @@ export function resolveSettings(record: UserSettings | null): EffectiveSettings 
 				italicColor: md.italicColor ?? factoryMd.italicColor,
 				userMarkdown: md.userMarkdown ?? factoryMd.userMarkdown,
 				userMath: md.userMath ?? factoryMd.userMath,
+				formatAsYouType: md.formatAsYouType ?? factoryMd.formatAsYouType,
 			},
 		},
 		graph: {

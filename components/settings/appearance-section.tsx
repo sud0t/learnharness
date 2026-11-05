@@ -352,6 +352,19 @@ export function AppearanceSection({
 					onChange={(on) => onSectionChange({ ...appearance, mdRendering: { ...md, userMath: on } })}
 				/>
 			</SettingsRow>
+			<SettingsRow
+				label="Format as you type"
+				hint="Off keeps the text box plain"
+				testid="row-format-as-you-type"
+				dimmed={!(md?.userMarkdown ?? true)}
+			>
+				<Toggle
+					checked={md?.formatAsYouType ?? true}
+					disabled={!(md?.userMarkdown ?? true)}
+					label="format as you type"
+					onChange={(on) => onSectionChange({ ...appearance, mdRendering: { ...md, formatAsYouType: on } })}
+				/>
+			</SettingsRow>
 		</>
 	);
 }

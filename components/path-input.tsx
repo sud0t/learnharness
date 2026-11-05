@@ -4,14 +4,16 @@ import * as React from "react";
 import { createPortal } from "react-dom";
 import { FilePathChip } from "./file-path-chip";
 import { cn } from "../lib/utils";
+import { readLiveFormat, type LiveFormatOptions } from "../src/core";
 import {
 	adjacentPathRange, atomicPathRange, clampPathSelection, insertFilePaths,
-	normalizePathEdit, normalizePathInputValue, pathInputStaticRange, PathInputHistory, readPathInput, readPathSelection, renderPathInput,
-	replacePathSelection, restorePathSelection,
-	type PathEditSnapshot, type TextSelection,
+	normalizePathEdit, normalizePathInputValue, pathInputStaticRange, PathInputHistory, readPathInput, readPathSelection, renderLiveInput, renderPathInput,
+	replacePathSelection, restorePathSelection, revealLiveInput, settleLiveCaret, LIVE_WIDGET_ATTRIBUTE,
+	type LiveView, type PathEditSnapshot, type TextSelection,
 } from "./path-input-dom";
 
 export const INSERT_FILE_PATHS_EVENT = "lh:insert-file-paths";
+const DOUBLE_CLICK_MS = 250;
 export type PathInputProps = Omit<React.HTMLAttributes<HTMLDivElement>, "children" | "dangerouslySetInnerHTML" | "defaultValue" | "onChange"> & {
 	value: string;
 	onValueChange: (value: string) => void;
@@ -20,12 +22,15 @@ export type PathInputProps = Omit<React.HTMLAttributes<HTMLDivElement>, "childre
 	defaultDropTarget?: boolean;
 	/** Native text-input semantics: strip CR/LF and leave Enter to the caller. */
 	singleLine?: boolean;
+	/** Format the draft in place, hiding Markdown symbols away from the caret. */
+	liveFormat?: LiveFormatOptions | null;
 };
 
 type ChipHost = { host: HTMLElement; path: string };
 type Controller = {
 	external: (value: string) => void;
 	remember: () => void;
+	repaint: () => void;
 };
 
 /**
@@ -33,13 +38,13 @@ type Controller = {
  * views of it. React never reconciles the editable DOM after a native mutation.
  */
 export const PathInput = React.forwardRef<HTMLDivElement, PathInputProps>(function PathInput({
-	value, onValueChange, placeholder, autoFocus, defaultDropTarget = false, singleLine = false, className,
+	value, onValueChange, placeholder, autoFocus, defaultDropTarget = false, singleLine = false, liveFormat = null, className,
 	onKeyDown, onFocus, onBlur, onInput, onPaste, onCopy, onCut,
 	onCompositionStart, onCompositionEnd, ...props
 }, forwardedRef) {
 	const rootRef = React.useRef<HTMLDivElement>(null);
 	const controllerRef = React.useRef<Controller | null>(null);
-	const callbacks = React.useRef({ onValueChange, singleLine });
+	const callbacks = React.useRef({ onValueChange, singleLine, liveFormat });
 	const composing = React.useRef(false);
 	const [chips, setChips] = React.useState<ChipHost[]>([]);
 	// Keep this text child immutable: SSR/hydration gets the complete draft,
@@ -47,7 +52,7 @@ export const PathInput = React.forwardRef<HTMLDivElement, PathInputProps>(functi
 	const initial = React.useRef({ value: normalizePathInputValue(value, singleLine), autoFocus, singleLine });
 
 	React.useImperativeHandle(forwardedRef, () => rootRef.current!, []);
-	React.useLayoutEffect(() => { callbacks.current = { onValueChange, singleLine }; }, [onValueChange, singleLine]);
+	React.useLayoutEffect(() => { callbacks.current = { onValueChange, singleLine, liveFormat }; }, [onValueChange, singleLine, liveFormat]);
 
 	React.useLayoutEffect(() => {
 		const root = rootRef.current!;
@@ -60,6 +65,9 @@ export const PathInput = React.forwardRef<HTMLDivElement, PathInputProps>(functi
 		let pendingPaths: string[] = [];
 		let pendingPaste: string[] = [];
 		let mounted = true;
+		let view: LiveView | null = null;
+		let pressed = false;
+		let clickHold: ReturnType<typeof setTimeout> | null = null;
 		const history = new PathInputHistory();
 
 		function remember() {
@@ -70,9 +78,22 @@ export const PathInput = React.forwardRef<HTMLDivElement, PathInputProps>(functi
 		function snapshot(): PathEditSnapshot {
 			return { value: current, selection: { ...saved } };
 		}
+		function reveal() {
+			if (view) revealLiveInput(view, document.activeElement === root ? saved : null);
+		}
 		function paint(selection: TextSelection, restore: boolean) {
-			setChips(renderPathInput(root, current));
+			const live = callbacks.current.liveFormat;
+			const format = live && !callbacks.current.singleLine ? readLiveFormat(current, live) : null;
 			saved = clampPathSelection(current, selection);
+			if (format) {
+				const drawn = renderLiveInput(root, current, format);
+				view = drawn.view;
+				setChips(drawn.chips);
+				reveal();
+			} else {
+				view = null;
+				setChips(renderPathInput(root, current));
+			}
 			if (restore) restorePathSelection(root, saved);
 		}
 		function change(next: PathEditSnapshot, record = true, before = snapshot(), notify = true) {
@@ -111,7 +132,11 @@ export const PathInput = React.forwardRef<HTMLDivElement, PathInputProps>(functi
 			if (composing.current || event.isComposing) return;
 			remember();
 			beforeEdit = snapshot();
-			if (event.inputType === "historyUndo" || event.inputType === "historyRedo") {
+			if (view && event.inputType === "insertText" && event.data && saved.anchor !== saved.focus) {
+				// Hidden symbols inside a selection must go too: the model owns this.
+				event.preventDefault();
+				change(replacePathSelection(current, saved, event.data));
+			} else if (event.inputType === "historyUndo" || event.inputType === "historyRedo") {
 				event.preventDefault();
 				travel(event.inputType === "historyUndo" ? "undo" : "redo");
 			} else if (event.inputType === "insertParagraph" || event.inputType === "insertLineBreak") {
@@ -136,12 +161,27 @@ export const PathInput = React.forwardRef<HTMLDivElement, PathInputProps>(functi
 				}
 				// Missing/invalid/non-single targets: native edit + input projection owns it.
 			} else if (event.inputType.startsWith("delete")) {
-				const range = adjacentPathRange(current, saved, event.inputType.includes("Backward") ? "backward" : "forward");
+				const backward = event.inputType.includes("Backward");
+				const range = adjacentPathRange(current, saved, backward ? "backward" : "forward") ?? (view ? liveDeleteRange(event, backward) : null);
 				if (range) {
 					event.preventDefault();
 					change(replacePathSelection(current, range, ""));
 				}
 			}
+		}
+		/** Formatted text never deletes natively: Chromium prunes hidden symbols
+		 * next to a text node it empties. Its target range is still the truth for
+		 * how much one press removes, such as a whole emoji. */
+		function liveDeleteRange(event: InputEvent, backward: boolean): TextSelection | null {
+			let targets: StaticRange[] = [];
+			try { targets = event.getTargetRanges?.() ?? []; } catch { /* Fall through. */ }
+			const range = targets.length === 1 ? pathInputStaticRange(root, targets[0]!) : null;
+			if (range) return range;
+			const at = saved.focus;
+			if (backward ? at === 0 : at === current.length) return null;
+			const from = backward ? at - (/[\udc00-\udfff]/.test(current[at - 1]!) ? 2 : 1) : at;
+			const to = backward ? at : at + (/[\ud800-\udbff]/.test(current[at]!) ? 2 : 1);
+			return { anchor: from, focus: to };
 		}
 		function input() {
 			if (composing.current) {
@@ -160,6 +200,8 @@ export const PathInput = React.forwardRef<HTMLDivElement, PathInputProps>(functi
 			// Let the browser dispatch cut so our clipboard handler can own it.
 			if (event.key === "Delete" && event.shiftKey && !event.ctrlKey && !event.metaKey && !event.altKey) return;
 			remember();
+			// selectionchange is asynchronous; a repeating key must not outrun it.
+			if (view && !pressed) releaseHold();
 			if ((event.metaKey || event.ctrlKey) && !event.altKey && (event.key.toLowerCase() === "z" || event.key.toLowerCase() === "y")) {
 				event.preventDefault();
 				travel(event.key.toLowerCase() === "y" || event.shiftKey ? "redo" : "undo");
@@ -188,6 +230,58 @@ export const PathInput = React.forwardRef<HTMLDivElement, PathInputProps>(functi
 			event.clipboardData.setData("text/plain", current.slice(start, end));
 			event.preventDefault();
 			if (event.type === "cut" && !composing.current) change(replacePathSelection(current, saved, ""));
+		}
+		/** Take in a caret or selection that has finished moving. */
+		function arrive() {
+			if (view && saved.anchor === saved.focus && document.activeElement === root) {
+				const caret = settleLiveCaret(view, saved.focus);
+				if (caret !== saved.focus) {
+					saved = { anchor: caret, focus: caret };
+					reveal();
+					restorePathSelection(root, saved);
+					return;
+				}
+			}
+			reveal();
+		}
+		function selectionChanged() {
+			remember();
+			if (!pressed && clickHold === null && !composing.current) arrive();
+		}
+		/** Stop waiting for a second click and show what the caret now touches. */
+		function releaseHold() {
+			if (clickHold !== null) clearTimeout(clickHold);
+			clickHold = null;
+			if (composing.current) return;
+			remember();
+			arrive();
+		}
+		function pointerDown(event: MouseEvent) {
+			const widget = (event.target as Element).closest?.(`[${LIVE_WIDGET_ATTRIBUTE}]`);
+			if (widget && view && !event.button) {
+				// Clicking an equation opens it for editing, inside its closing delimiter.
+				const math = view.format.items[Number(widget.getAttribute(LIVE_WIDGET_ATTRIBUTE))];
+				event.preventDefault();
+				root.focus();
+				if (math?.kind === "math") {
+					saved = { anchor: math.caret, focus: math.caret };
+					reveal();
+					restorePathSelection(root, saved);
+				}
+				return;
+			}
+			if (clickHold !== null) clearTimeout(clickHold);
+			clickHold = null;
+			pressed = true;
+		}
+		function pointerUp(event: MouseEvent) {
+			if (!pressed) return;
+			pressed = false;
+			remember();
+			// Showing symbols moves the text, so a second click must land first:
+			// it would otherwise select a symbol instead of the word under it.
+			if (view && event.detail === 1 && saved.anchor === saved.focus) clickHold = setTimeout(releaseHold, DOUBLE_CLICK_MS);
+			else releaseHold();
 		}
 		function startComposition() {
 			remember();
@@ -224,6 +318,7 @@ export const PathInput = React.forwardRef<HTMLDivElement, PathInputProps>(functi
 		}
 		controllerRef.current = {
 			remember,
+			repaint() { if (!composing.current) paint(saved, document.activeElement === root); },
 			external(next) {
 				next = normalizePathInputValue(next, callbacks.current.singleLine);
 				if (composing.current) { pendingExternal = next; return; }
@@ -240,7 +335,7 @@ export const PathInput = React.forwardRef<HTMLDivElement, PathInputProps>(functi
 			},
 		};
 		paint(saved, false);
-		if (initial.current.autoFocus) { root.focus(); restorePathSelection(root, saved); }
+		if (initial.current.autoFocus) { root.focus(); reveal(); restorePathSelection(root, saved); }
 		root.addEventListener(INSERT_FILE_PATHS_EVENT, insertEvent);
 		root.addEventListener("beforeinput", beforeInput);
 		root.addEventListener("input", input);
@@ -250,11 +345,16 @@ export const PathInput = React.forwardRef<HTMLDivElement, PathInputProps>(functi
 		root.addEventListener("cut", copy);
 		root.addEventListener("compositionstart", startComposition);
 		root.addEventListener("compositionend", endComposition);
-		document.addEventListener("selectionchange", remember);
+		document.addEventListener("selectionchange", selectionChanged);
+		root.addEventListener("mousedown", pointerDown);
+		root.addEventListener("focus", selectionChanged);
+		root.addEventListener("blur", reveal);
+		document.addEventListener("mouseup", pointerUp);
 		return () => {
 			mounted = false;
 			composing.current = false;
 			controllerRef.current = null;
+			if (clickHold !== null) clearTimeout(clickHold);
 			root.removeEventListener(INSERT_FILE_PATHS_EVENT, insertEvent);
 			root.removeEventListener("beforeinput", beforeInput);
 			root.removeEventListener("input", input);
@@ -264,11 +364,22 @@ export const PathInput = React.forwardRef<HTMLDivElement, PathInputProps>(functi
 			root.removeEventListener("cut", copy);
 			root.removeEventListener("compositionstart", startComposition);
 			root.removeEventListener("compositionend", endComposition);
-			document.removeEventListener("selectionchange", remember);
+			document.removeEventListener("selectionchange", selectionChanged);
+			root.removeEventListener("mousedown", pointerDown);
+			root.removeEventListener("focus", selectionChanged);
+			root.removeEventListener("blur", reveal);
+			document.removeEventListener("mouseup", pointerUp);
 		};
 	}, []);
 
 	React.useLayoutEffect(() => { controllerRef.current?.external(value); }, [value, singleLine]);
+	const liveKey = liveFormat && !singleLine ? (liveFormat.math ? "math" : "markdown") : "off";
+	const painted = React.useRef(liveKey);
+	React.useLayoutEffect(() => {
+		if (painted.current === liveKey) return;
+		painted.current = liveKey;
+		controllerRef.current?.repaint();
+	}, [liveKey]);
 
 	return <>
 		<div

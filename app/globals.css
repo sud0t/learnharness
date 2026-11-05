@@ -255,6 +255,89 @@ body {
 	line-height: 1.25;
 }
 
+/* Format as you type. Every source character stays in the editor: symbols and
+   equation source are hidden with display, never removed, so neither the caret
+   nor the sent text is touched. Sizes and colors follow the transcript. */
+.lh-lf-hide:not([data-show]),
+.lh-lf-math[data-show] {
+	display: none;
+}
+.lh-lf-marker,
+.lh-lf-source {
+	color: var(--color-muted-foreground);
+}
+.lh-lf-strong {
+	font-weight: 700;
+	color: var(--lh-ink-strong, inherit);
+}
+.lh-lf-emphasis {
+	font-style: italic;
+	color: var(--lh-ink-italic, inherit);
+}
+.lh-lf-delete {
+	text-decoration: line-through;
+}
+.lh-lf-code {
+	border-radius: 0.25rem;
+	background: var(--color-muted);
+	padding: 0.125rem 0.375rem;
+	font-family: var(--font-mono);
+	font-size: 0.875em;
+}
+.lh-lf-link {
+	font-weight: 500;
+	color: var(--color-primary);
+	text-decoration: underline;
+}
+.lh-lf-math {
+	white-space: normal;
+}
+.lh-lf-display {
+	display: inline-block;
+	width: 100%;
+	text-align: center;
+}
+.lh-lf-line {
+	display: block;
+}
+.lh-lf-line[data-heading] {
+	font-weight: var(--lh-heading-weight, 900);
+}
+.lh-lf-line[data-heading="1"] {
+	font-size: 1.875em;
+}
+.lh-lf-line[data-heading="2"] {
+	font-size: 1.5em;
+}
+.lh-lf-line[data-heading="3"] {
+	font-size: 1.25em;
+}
+.lh-lf-line[data-heading="4"] {
+	font-size: 1.125em;
+}
+.lh-lf-line[data-heading="6"] {
+	font-size: 0.875em;
+}
+.lh-lf-line[data-quote] {
+	border-left: 4px solid color-mix(in srgb, var(--color-muted-foreground) 30%, transparent);
+	padding-left: 1rem;
+	color: var(--color-muted-foreground);
+	font-style: italic;
+}
+.lh-lf-line[data-list] {
+	position: relative;
+	padding-left: calc(var(--lh-lf-depth) * 1.25em);
+}
+.lh-lf-line[data-list="bullet"]:not([data-show])::before {
+	content: "\2022";
+	position: absolute;
+	left: calc((var(--lh-lf-depth) - 1) * 1.25em + 0.3em);
+}
+.lh-lf-line[data-list="ordered"],
+.lh-lf-line[data-list][data-show] {
+	text-indent: -1.25em;
+}
+
 /* Thin dark native scrollbar (app-wide): dark thumb, transparent track. */
 * {
 	scrollbar-width: thin;

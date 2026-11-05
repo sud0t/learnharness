@@ -11,6 +11,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { parseHTML } from "linkedom";
 import { UserText, UserTextView } from "../components/user-text.tsx";
 import { quoteFilePath } from "../src/core/file-paths.ts";
+import { readLiveFormat, type LiveMath } from "../src/core/live-format.ts";
 
 const view = (text: string, opts: { markdown?: boolean; math?: boolean; quoted?: boolean } = {}) => {
 	const html = renderToStaticMarkup(<UserTextView text={text} markdown={opts.markdown ?? true} math={opts.math ?? true} quoted={opts.quoted} />);
@@ -182,6 +183,29 @@ describe("user text: changing the math toggle on a mounted message", () => {
 				else Reflect.deleteProperty(globalThis, key);
 			}
 		}
+	});
+});
+
+// A draft has to preview as it will send, so the two readers must agree.
+describe("user text: the draft and the sent message agree on math", () => {
+	for (const source of [
+		"Inline $x^2$ only",
+		"$$E=mc^2$$",
+		"Before $$E=mc^2$$ after",
+		"$$\nE=mc^2\n$$",
+		"- item $$x$$\n- next",
+		"> quoted $$x$$",
+		"# heading $$x$$",
+		String.raw`old \(a\) and \[b\]`,
+		"It costs $5 and $10 more",
+		"`$not math$` then $yes$",
+		"```\n$not math$\n```",
+		"\\$5 stays a dollar",
+	]) it(`for ${JSON.stringify(source)}`, () => {
+		const { root } = view(source);
+		const maths = readLiveFormat(source, { math: true }).items.filter((item): item is LiveMath => item.kind === "math");
+		assert.equal(maths.length, katex(root), "equation count");
+		assert.equal(maths.filter(item => item.display).length, display(root), "block equation count");
 	});
 });
 

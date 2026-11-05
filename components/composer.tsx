@@ -3,7 +3,7 @@
 import { useCallback, useLayoutEffect, useRef, useState } from "react";
 import { ArrowRightIcon, CornerDownLeftIcon, SquareIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { PathInput } from "@/components/path-input";
+import { LivePathInput } from "@/components/live-path-input";
 import { AttachFilesButton } from "@/components/attach-files-button";
 
 /**
@@ -156,7 +156,7 @@ export function Composer({
 				act();
 			}}
 		>
-			<PathInput
+			<LivePathInput
 				ref={editorRef}
 				value={value}
 				onValueChange={onChange}

@@ -151,10 +151,11 @@ describe("sanitizeUserSettings", () => {
 
 	it("keeps the user-text toggles only when they are booleans", () => {
 		const out = sanitizeUserSettings({
-			appearance: { mdRendering: { userMarkdown: false, userMath: "off" } },
+			appearance: { mdRendering: { userMarkdown: false, userMath: "off", formatAsYouType: "off" } },
 		});
 		assert.equal(out?.appearance?.mdRendering?.userMarkdown, false);
 		assert.equal(out?.appearance?.mdRendering?.userMath, undefined);
+		assert.equal(out?.appearance?.mdRendering?.formatAsYouType, undefined);
 	});
 
 	it("empty strings/whitespace fontFamily → null (Source Sans 3); wrong-type → null too (the default)", () => {

@@ -116,7 +116,7 @@ describe("parseAppearanceSettingsBody", () => {
 			fontFamily: "Some Font",
 			proseFontSize: 20,
 			sessionNameSerif: false,
-			mdRendering: { headingWeight: 700, boldColor: "#ff8800", italicColor: null, userMarkdown: false, userMath: false },
+			mdRendering: { headingWeight: 700, boldColor: "#ff8800", italicColor: null, userMarkdown: false, userMath: false, formatAsYouType: false },
 		});
 		assert.ok(r.ok);
 		assert.deepEqual(r.settings, {
@@ -125,7 +125,7 @@ describe("parseAppearanceSettingsBody", () => {
 			fontFamily: "Some Font",
 			proseFontSize: 20,
 			sessionNameSerif: false,
-			mdRendering: { headingWeight: 700, boldColor: "#ff8800", italicColor: null, userMarkdown: false, userMath: false },
+			mdRendering: { headingWeight: 700, boldColor: "#ff8800", italicColor: null, userMarkdown: false, userMath: false, formatAsYouType: false },
 		});
 	});
 
@@ -143,6 +143,7 @@ describe("parseAppearanceSettingsBody", () => {
 			{ mdRendering: { boldColor: "red" } },
 			{ mdRendering: { userMarkdown: "no" } },
 			{ mdRendering: { userMath: 0 } },
+			{ mdRendering: { formatAsYouType: "yes" } },
 		];
 		for (const body of cases) {
 			assert.equal(parseAppearanceSettingsBody(body).ok, false, JSON.stringify(body));

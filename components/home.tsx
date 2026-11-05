@@ -13,7 +13,7 @@ import { useFieldCycle } from "@/components/field-cycle";
 import { SidebarToggle } from "@/components/sidebar";
 import { StatsBar } from "@/components/stats-bar";
 import { OPENING_PROMPT_FAILURE } from "@/components/opening-prompt";
-import { PathInput } from "@/components/path-input";
+import { LivePathInput } from "@/components/live-path-input";
 import { AttachFilesButton } from "@/components/attach-files-button";
 import { SessionStarter } from "@/components/start-session";
 import type { TurnUsage } from "@/src/core";
@@ -251,7 +251,7 @@ export function Home({
 						void start();
 					}}
 				>
-					<PathInput
+					<LivePathInput
 						ref={topicInputRef}
 						value={topic}
 						onValueChange={(value) => {

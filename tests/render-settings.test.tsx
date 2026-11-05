@@ -303,6 +303,7 @@ describe("AppearanceSection (thin SSR)", () => {
 		assert.ok(math.includes('aria-checked="true"'));
 		assert.ok(!math.includes("disabled"), "math is live while markdown is on");
 		assert.ok(!tagOf(html, "row-user-math").includes("opacity-40"));
+		assert.ok(!tagOf(html, "row-format-as-you-type").includes("opacity-40"));
 	});
 
 	it("markdown off dims and locks the math toggle, keeping its stored value", () => {
@@ -314,6 +315,7 @@ describe("AppearanceSection (thin SSR)", () => {
 		assert.ok(math.includes("disabled"));
 		assert.ok(math.includes('aria-checked="true"'));
 		assert.ok(tagOf(html, "row-user-math").includes("opacity-40"));
+		assert.ok(tagOf(html, "row-format-as-you-type").includes("opacity-40"));
 	});
 
 	it("hex inputs carry the factory placeholders; prose size resolves against the factory", () => {

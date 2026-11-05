@@ -161,3 +161,25 @@ export function healOverescapedCommands(text: string): string {
 export function repairMathForDisplay(text: string): string {
 	return healOverescapedCommands(restoreMathEscapes(recoverDocumentLayout(text)));
 }
+
+export type MathSource = { start: number; end: number; bodyEnd: number; tex: string; display: boolean };
+
+/** Every span transformMathDelimiters would show as math, in source offsets.
+ * Shares its display rules so a draft previews as the sent message renders. */
+export function readMathSources(markdown: string): MathSource[] {
+	const sources: MathSource[] = [];
+	let offset = 0;
+	for (const span of readContentSpans(markdown)) {
+		const start = offset; offset += span.raw.length;
+		if (span.kind !== "math" || !span.body.trim()) continue;
+		const display = span.open === "$" || span.open === "\\(" ? false
+			: span.open === "$$" ? span.display || !staysInline(markdown, start)
+			: span.open === "\\[" ? !indented(markdown, start)
+			: span.display;
+		sources.push({
+			start, end: offset, bodyEnd: offset - span.close.length, display,
+			tex: span.open === "$" ? replaceEscapedDollars(span.body) : span.body.trim(),
+		});
+	}
+	return sources;
+}

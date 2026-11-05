@@ -32,7 +32,7 @@ describe("resolveAppearance — delta over factory", () => {
 		assert.equal(a.proseFontSize, 16);
 		assert.equal(a.sessionNameSerif, true);
 		assert.deepEqual(a.mdRendering, {
-			headingWeight: 900, boldColor: null, italicColor: null, userMarkdown: true, userMath: true,
+			headingWeight: 900, boldColor: null, italicColor: null, userMarkdown: true, userMath: true, formatAsYouType: true,
 		});
 	});
 

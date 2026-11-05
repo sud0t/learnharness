@@ -5,6 +5,7 @@ import { ArrowDownIcon, ChevronRightIcon, PlayIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { finishDictation, isDictationActive, joinDictation, useDictationTarget } from "@/components/dictation";
 import { useEnterSubmits } from "@/components/enter-submits";
+import { LivePathInput } from "@/components/live-path-input";
 import { PathInput } from "@/components/path-input";
 import { MalformedQuestion } from "@/components/malformed-question";
 import { ToolContentResponse } from "@/components/ai-elements/message";
@@ -850,7 +851,7 @@ function QuestionDockForm({
 						{qd.mode === "text" ? "Your answer" : "YOUR THINKING"}
 					</div>
 					{qd.mode === "text" ? (
-						<PathInput
+						<LivePathInput
 							value={text}
 							onValueChange={(value) => {
 								answerTextRef.current = value;
@@ -877,7 +878,7 @@ function QuestionDockForm({
 							className="field-sizing-content lh-input max-h-48 min-h-10 w-full resize-none bg-transparent px-2.5 py-2 outline-none placeholder:text-muted-foreground"
 						/>
 					) : (
-						<PathInput
+						<LivePathInput
 							ref={thinkingRef}
 							value={thinking}
 							onValueChange={(value) => {

@@ -391,6 +391,9 @@ export interface MdRenderingSettings {
 	/** Render math in the learner's own text (default true). Only applies
 	 *  while userMarkdown is on. */
 	userMath?: boolean;
+	/** Format the draft in the input as it is typed, hiding Markdown symbols
+	 *  away from the caret. Needs userMarkdown; userMath still governs math. */
+	formatAsYouType?: boolean;
 }
 
 /** Appearance settings — mode, colors, type, markdown emphasis. */
@@ -514,6 +517,7 @@ export interface FactorySettings {
 			italicColor: string | null;
 			userMarkdown: boolean;
 			userMath: boolean;
+			formatAsYouType: boolean;
 		};
 	};
 	graph: Required<GraphSettings>;
@@ -530,7 +534,7 @@ export const FACTORY_SETTINGS: FactorySettings = {
 		fontFamily: null, // Source Sans 3
 		proseFontSize: 16,
 		sessionNameSerif: true,
-		mdRendering: { headingWeight: 900, boldColor: null, italicColor: null, userMarkdown: true, userMath: true },
+		mdRendering: { headingWeight: 900, boldColor: null, italicColor: null, userMarkdown: true, userMath: true, formatAsYouType: true },
 	},
 	graph: { enabled: true, rendering: true, extractionChunkTokens: 4096 },
 	compaction: { thresholdTokens: 150_000 },
@@ -755,6 +759,7 @@ function sanitizeMdRendering(raw: unknown): MdRenderingSettings {
 	if (r.italicColor !== undefined) out.italicColor = sanitizeHexOrNull(r.italicColor);
 	if (typeof r.userMarkdown === "boolean") out.userMarkdown = r.userMarkdown;
 	if (typeof r.userMath === "boolean") out.userMath = r.userMath;
+	if (typeof r.formatAsYouType === "boolean") out.formatAsYouType = r.formatAsYouType;
 	return out;
 }
 

@@ -37,6 +37,7 @@ export function resolveAppearance(delta: AppearanceSettings | undefined) {
 			italicColor: delta?.mdRendering?.italicColor ?? f.mdRendering.italicColor,
 			userMarkdown: delta?.mdRendering?.userMarkdown ?? f.mdRendering.userMarkdown,
 			userMath: delta?.mdRendering?.userMath ?? f.mdRendering.userMath,
+			formatAsYouType: delta?.mdRendering?.formatAsYouType ?? f.mdRendering.formatAsYouType,
 		},
 	};
 }

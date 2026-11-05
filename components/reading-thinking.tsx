@@ -2,7 +2,7 @@
 
 import { useCallback, useLayoutEffect, useRef, useState } from "react";
 import { joinDictation, useDictationTarget } from "@/components/dictation";
-import { PathInput } from "@/components/path-input";
+import { LivePathInput } from "@/components/live-path-input";
 
 /**
  * The reading-thinking field (owner design 2026-10-03, "two questions per
@@ -62,7 +62,7 @@ export function ReadingThinkingField({
 			<div className="pb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
 				Thinking while reading
 			</div>
-			<PathInput
+			<LivePathInput
 				value={draft}
 				onValueChange={applyDraft}
 				/* py-0.5 (owner round, 2026-10-07): the scrollbar fix. Source

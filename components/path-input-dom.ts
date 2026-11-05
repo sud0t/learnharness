@@ -1,9 +1,13 @@
-import { parseFilePaths, quoteFilePath } from "@/src/core";
+import katex from "katex";
+import { parseFilePaths, quoteFilePath, revealedLiveKeys, type FilePathPart, type LiveFormat, type LiveLine, type LiveMath, type LiveRange } from "@/src/core";
 
 /** Tokens store their complete source, not their abbreviated visual label. */
 export const PATH_SOURCE_ATTRIBUTE = "data-file-path-source";
 /** Presentation-only line box for the caret after a final model newline. */
 export const PATH_CARET_ATTRIBUTE = "data-file-path-caret";
+/** A rendered equation shown in place of its source, which stays in the DOM. */
+export const LIVE_WIDGET_ATTRIBUTE = "data-lf-widget";
+const LIVE_LINE_ATTRIBUTE = "data-lf-line";
 export type TextSelection = { anchor: number; focus: number };
 export type DOMPoint = { node: Node; offset: number };
 type Segment = { text: string; start: DOMPoint; end: DOMPoint; node?: Text; token?: Element };
@@ -23,7 +27,7 @@ function segments(root: HTMLElement): Segment[] {
 		}
 		if (node.nodeType !== 1) return;
 		const element = node as Element;
-		if (element.hasAttribute(PATH_CARET_ATTRIBUTE)) return;
+		if (element.hasAttribute(PATH_CARET_ATTRIBUTE) || element.hasAttribute(LIVE_WIDGET_ATTRIBUTE)) return;
 		const raw = element.getAttribute(PATH_SOURCE_ATTRIBUTE);
 		if (raw !== null) {
 			const index = childIndex(node);
@@ -66,8 +70,11 @@ export function pathInputPoint(root: HTMLElement, offset: number): DOMPoint {
 		return { node: root, offset: childIndex(trailing) };
 	}
 	let remaining = Math.max(0, offset);
-	for (const part of parts) {
+	for (const [index, part] of parts.entries()) {
 		if (remaining <= part.text.length) {
+			// The offset after a line box's newline is the start of the next box.
+			if (remaining > 0 && remaining === part.text.length && part.text.endsWith("\n") && index < parts.length - 1
+				&& part.node?.parentElement?.closest(`[${LIVE_LINE_ATTRIBUTE}]`)) { remaining = 0; continue; }
 			if (part.node) return { node: part.node, offset: remaining };
 			return remaining <= part.text.length / 2 ? part.start : part.end;
 		}
@@ -79,6 +86,8 @@ export function pathInputPoint(root: HTMLElement, offset: number): DOMPoint {
 /** Works without Range: useful in DOM test environments as well as real Selection. */
 export function pathInputOffset(root: HTMLElement, node: Node, offset: number): number | null {
 	if (node !== root && !root.contains(node)) return null;
+	const widget = (node.nodeType === 1 ? node as Element : node.parentElement)?.closest(`[${LIVE_WIDGET_ATTRIBUTE}]`);
+	if (widget) { node = widget.parentNode!; offset = childIndex(widget); }
 	let total = 0;
 	for (const part of segments(root)) {
 		if (part.node === node) return total + Math.min(Math.max(0, offset), part.text.length);
@@ -138,23 +147,20 @@ export function restorePathSelection(root: HTMLElement, selection: TextSelection
 	browserSelection.setBaseAndExtent(anchor.node, anchor.offset, focus.node, focus.offset);
 }
 
-/** Returns portal hosts. React owns only their visual contents, never the editable tree. */
-export function renderPathInput(root: HTMLElement, value: string): Array<{ host: HTMLElement; path: string }> {
+type PathPart = Extract<FilePathPart, { kind: "path" }>;
+type ChipHost = { host: HTMLElement; path: string };
+
+function chipHost(document: Document, part: PathPart): ChipHost {
+	const host = document.createElement("span");
+	host.contentEditable = "false";
+	host.setAttribute("contenteditable", "false");
+	host.setAttribute(PATH_SOURCE_ATTRIBUTE, part.text);
+	return { host, path: part.path };
+}
+
+/** Swap in a drawn draft, with the caret boxes every drawing needs. */
+function commitDrawing(root: HTMLElement, value: string, fragment: DocumentFragment): void {
 	const document = root.ownerDocument;
-	const fragment = document.createDocumentFragment();
-	const chips: Array<{ host: HTMLElement; path: string }> = [];
-	for (const part of parseFilePaths(value)) {
-		if (part.kind === "text") {
-			fragment.append(document.createTextNode(part.text));
-		} else {
-			const host = document.createElement("span");
-			host.contentEditable = "false";
-			host.setAttribute("contenteditable", "false");
-			host.setAttribute(PATH_SOURCE_ATTRIBUTE, part.text);
-			fragment.append(host);
-			chips.push({ host, path: part.path });
-		}
-	}
 	// Empty boundary text nodes allow a caret immediately before/after an atomic chip.
 	if (!fragment.firstChild || fragment.firstChild.nodeType !== 3) fragment.prepend(document.createTextNode(""));
 	if (fragment.lastChild?.nodeType !== 3) fragment.append(document.createTextNode(""));
@@ -168,7 +174,183 @@ export function renderPathInput(root: HTMLElement, value: string): Array<{ host:
 	}
 	root.replaceChildren(fragment);
 	root.dataset.empty = value.length === 0 ? "true" : "false";
+}
+
+/** Returns portal hosts. React owns only their visual contents, never the editable tree. */
+export function renderPathInput(root: HTMLElement, value: string): ChipHost[] {
+	const document = root.ownerDocument;
+	const fragment = document.createDocumentFragment();
+	const chips: ChipHost[] = [];
+	for (const part of parseFilePaths(value)) {
+		if (part.kind === "text") {
+			fragment.append(document.createTextNode(part.text));
+		} else {
+			const chip = chipHost(document, part);
+			fragment.append(chip.host);
+			chips.push(chip);
+		}
+	}
+	commitDrawing(root, value, fragment);
 	return chips;
+}
+
+const equationCache = new Map<string, string>();
+/** Same fallback as the transcript's rehype-katex: bad TeX shows muted, never throws. */
+function equationHtml(math: LiveMath): string {
+	const key = `${math.display ? "d" : "i"}:${math.tex}`;
+	let html = equationCache.get(key);
+	if (html === undefined) {
+		html = katex.renderToString(math.tex, { displayMode: math.display, throwOnError: false, strict: "ignore", errorColor: "var(--color-muted-foreground)" });
+		if (equationCache.size >= 200) equationCache.delete(equationCache.keys().next().value!);
+		equationCache.set(key, html);
+	}
+	return html;
+}
+
+export type LiveView = { format: LiveFormat; elements: Map<string, Element[]>; shown: Set<string> };
+
+function lineBox(document: Document, line: LiveLine): HTMLElement {
+	const box = document.createElement("span");
+	box.className = "lh-lf-line";
+	box.setAttribute(LIVE_LINE_ATTRIBUTE, "");
+	if (line.heading) box.setAttribute("data-heading", String(line.heading));
+	if (line.quote) box.setAttribute("data-quote", String(line.quote));
+	if (line.list) {
+		box.setAttribute("data-list", line.list);
+		box.style.setProperty("--lh-lf-depth", String(line.depth));
+	}
+	return box;
+}
+
+function equationWidget(document: Document, math: LiveMath, index: number): HTMLElement {
+	const widget = document.createElement("span");
+	widget.className = math.display ? "lh-lf-math lh-lf-display" : "lh-lf-math";
+	widget.contentEditable = "false";
+	widget.setAttribute("contenteditable", "false");
+	widget.setAttribute(LIVE_WIDGET_ATTRIBUTE, String(index));
+	widget.innerHTML = equationHtml(math);
+	return widget;
+}
+
+/** Draw a draft with formatting. Every source character stays in the DOM, so a
+ * selection never has to move when symbols are shown or hidden. */
+export function renderLiveInput(root: HTMLElement, value: string, format: LiveFormat): { chips: ChipHost[]; view: LiveView } {
+	const document = root.ownerDocument;
+	const fragment = document.createDocumentFragment();
+	const chips: ChipHost[] = [];
+	const elements = new Map<string, Element[]>();
+	const track = (key: string, element: Element) => {
+		const list = elements.get(key);
+		if (list) list.push(element); else elements.set(key, [element]);
+	};
+	const paths = new Map<number, PathPart>();
+	for (const part of parseFilePaths(value)) if (part.kind === "path") paths.set(part.start, part);
+
+	const cuts = new Set([0, value.length]);
+	const cut = (range: LiveRange) => { cuts.add(range.start); cuts.add(range.end); };
+	for (const path of paths.values()) cut(path);
+	for (const item of format.items) {
+		cut(item);
+		if (item.kind === "span") item.markers.forEach(cut);
+	}
+	for (const line of format.lines) { cut(line); line.markers.forEach(cut); }
+	const stops = [...cuts].sort((a, b) => a - b);
+
+	const within = (ranges: LiveRange[], offset: number) => ranges.some((range) => offset >= range.start && offset < range.end);
+	let container: ParentNode & Node = fragment;
+	let openLine = -1, nextLine = 0, nextItem = 0;
+	let active: number[] = [];
+	for (let stop = 0; stop + 1 < stops.length; stop++) {
+		const start = stops[stop]!, end = stops[stop + 1]!;
+		while (nextLine < format.lines.length && format.lines[nextLine]!.end <= start) nextLine++;
+		const line = format.lines[nextLine];
+		const lineIndex = line && start >= line.start ? nextLine : -1;
+		if (lineIndex !== openLine) {
+			openLine = lineIndex;
+			if (lineIndex < 0) container = fragment;
+			else {
+				const box = lineBox(document, line!);
+				track(`l${lineIndex}`, box);
+				fragment.append(box);
+				container = box;
+			}
+		}
+		active = active.filter((index) => format.items[index]!.end > start);
+		while (nextItem < format.items.length && format.items[nextItem]!.start <= start) active.push(nextItem++);
+
+		const path = paths.get(start);
+		if (path) {
+			const chip = chipHost(document, path);
+			container.append(chip.host);
+			chips.push(chip);
+			continue;
+		}
+		const classes: string[] = [];
+		let key: string | null = null;
+		for (const index of active) {
+			const item = format.items[index]!;
+			if (item.kind === "math") {
+				key = `i${index}`;
+				classes.push("lh-lf-hide", "lh-lf-source");
+				if (start === item.start) {
+					const widget = equationWidget(document, item, index);
+					track(key, widget);
+					container.append(widget);
+				}
+			} else if (within(item.markers, start)) {
+				key = `i${index}`;
+				classes.push("lh-lf-hide", "lh-lf-marker");
+			} else classes.push(`lh-lf-${item.style}`);
+		}
+		if (lineIndex >= 0 && within(line!.markers, start)) {
+			key = `l${lineIndex}`;
+			classes.push("lh-lf-hide", "lh-lf-marker");
+		}
+		const text = document.createTextNode(value.slice(start, end));
+		if (classes.length) {
+			const span = document.createElement("span");
+			span.className = classes.join(" ");
+			span.append(text);
+			if (key) track(key, span);
+			container.append(span);
+		} else container.append(text);
+	}
+	commitDrawing(root, value, fragment);
+	return { chips, view: { format, elements, shown: new Set() } };
+}
+
+/** Show the source of what the selection touches. Toggles attributes only:
+ * the DOM and the browser's selection stay exactly as they were. */
+export function revealLiveInput(view: LiveView, selection: TextSelection | null): void {
+	const next = revealedLiveKeys(view.format, selection);
+	// A hidden noneditable widget still costs a key press to cross, so it only
+	// stays noneditable while it is on screen.
+	const toggle = (element: Element, show: boolean) => {
+		element.toggleAttribute("data-show", show);
+		if (!element.hasAttribute(LIVE_WIDGET_ATTRIBUTE)) return;
+		if (show) element.removeAttribute("contenteditable");
+		else element.setAttribute("contenteditable", "false");
+	};
+	for (const key of view.shown) if (!next.has(key)) for (const element of view.elements.get(key) ?? []) toggle(element, false);
+	for (const key of next) if (!view.shown.has(key)) for (const element of view.elements.get(key) ?? []) toggle(element, true);
+	view.shown = next;
+}
+
+/** A browser treats both sides of hidden symbols as one spot and keeps the
+ * inner one, so End on a line ending in bold would type into the bold. A caret
+ * arriving against an item's hidden symbols belongs outside them. */
+export function settleLiveCaret(view: LiveView, offset: number): number {
+	let next = offset;
+	for (let moved = true; moved;) {
+		moved = false;
+		view.format.items.forEach((item, index) => {
+			if (item.kind !== "span" || item.markers.length !== 2 || view.shown.has(`i${index}`)) return;
+			const [open, close] = item.markers as [LiveRange, LiveRange];
+			if (next === open.end) { next = open.start; moved = true; }
+			else if (next === close.start) { next = close.end; moved = true; }
+		});
+	}
+	return next;
 }
 
 export function clampPathSelection(value: string, selection: TextSelection): TextSelection {

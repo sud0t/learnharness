@@ -6,7 +6,7 @@ import { ToolContentResponse } from "@/components/ai-elements/message";
 import { Button } from "@/components/ui/button";
 import { joinDictation, useDictationTarget } from "@/components/dictation";
 import { useEnterSubmits } from "@/components/enter-submits";
-import { PathInput } from "@/components/path-input";
+import { LivePathInput } from "@/components/live-path-input";
 import { cn } from "@/lib/utils";
 
 /**
@@ -122,7 +122,7 @@ export function PracticeDock({ problemCallId, input, expanded, onExpand, onSubmi
 				<div className="px-2.5 pt-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
 					YOUR THINKING
 				</div>
-				<PathInput
+				<LivePathInput
 					value={thinking}
 					onValueChange={(value) => {
 						thinkingRef.current = value;

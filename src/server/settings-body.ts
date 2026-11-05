@@ -308,6 +308,12 @@ export function parseAppearanceSettingsBody(body: unknown): SettingsBodyResult<A
 			}
 			rendering.userMath = md.userMath;
 		}
+		if (md.formatAsYouType !== undefined) {
+			if (typeof md.formatAsYouType !== "boolean") {
+				return { ok: false, error: "mdRendering.formatAsYouType must be a boolean" };
+			}
+			rendering.formatAsYouType = md.formatAsYouType;
+		}
 		if (Object.keys(rendering).length) settings.mdRendering = rendering;
 	}
 	return { ok: true, settings };
