@@ -180,6 +180,42 @@ linux:
   syncDesktopName: true
   # Both targets update via electron-updater 6.8.9. AppImage replaces its
   # own file; deb uses dpkg/apt and may request administrator permission.
+# The fork's Arch package, built by `npm run desktop:dist:linux`. It is named
+# on the command line because the release checks pin linux.target. Updates go
+# through electron-updater's PacmanUpdater, which asks for administrator
+# permission. These are the runtime libraries the AUR package declares.
+pacman:
+  depends:
+    - alsa-lib
+    - at-spi2-core
+    - cairo
+    - dbus
+    - expat
+    - glib2
+    - glibc
+    - gtk3
+    - libcups
+    - libgcc
+    - libnotify
+    - libsecret
+    - libstdc++
+    - libx11
+    - libxcb
+    - libxcomposite
+    - libxdamage
+    - libxext
+    - libxfixes
+    - libxkbcommon
+    - libxrandr
+    - libxss
+    - libxtst
+    - mesa
+    - nspr
+    - nss
+    - pango
+    - systemd-libs
+    - util-linux-libs
+    - xdg-utils
 publish:
   # Update feed = GitHub Releases (decided 2026-10-08): latest-mac.yml +
   # zip/blockmap live on releases; electron-updater reads them anonymously.
@@ -187,8 +223,10 @@ publish:
   # from a private repo are impossible, and a token baked into the app
   # would be a leak. desktop:dist passes no --publish flag, so builds never
   # upload; publishing happens at release time (GH_TOKEN + --publish).
+  # This fork's installs read this fork's releases: upload the .pacman and
+  # latest-linux.yml from dist/ to a published GitHub release.
   - provider: github
-    owner: amosblomqvist
+    owner: sud0t
     repo: learnharness
     # All three CI jobs contribute assets; only the owner publishes it.
     releaseType: draft

@@ -163,8 +163,16 @@ describe("desktop packaging policy", () => {
 		const pkg = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
 		assert.equal(pkg.author.name, "Amos Blomqvist");
 		assert.equal(pkg.author.email, "255718537+amosblomqvist@users.noreply.github.com");
-		assert.equal(pkg.homepage, "https://github.com/amosblomqvist/learnharness");
+		assert.equal(pkg.homepage, "https://github.com/sud0t/learnharness");
 		assert.equal(pkg.desktopName, "learnharness.desktop");
+	});
+
+	it("updates from this fork's releases through its Arch package", () => {
+		const pkg = JSON.parse(readFileSync(new URL("../package.json", import.meta.url), "utf8"));
+		assert.equal(config.publish[0].owner, "sud0t");
+		assert.equal(config.publish[0].repo, "learnharness");
+		assert.match(pkg.scripts["desktop:dist:linux"], /electron-builder --linux pacman --x64/);
+		assert.ok(config.pacman.depends.includes("gtk3"), "declares its own runtime libraries");
 	});
 });
 
