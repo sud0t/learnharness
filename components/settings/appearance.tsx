@@ -35,6 +35,8 @@ export function resolveAppearance(delta: AppearanceSettings | undefined) {
 			headingWeight: delta?.mdRendering?.headingWeight ?? f.mdRendering.headingWeight,
 			boldColor: delta?.mdRendering?.boldColor ?? f.mdRendering.boldColor,
 			italicColor: delta?.mdRendering?.italicColor ?? f.mdRendering.italicColor,
+			userMarkdown: delta?.mdRendering?.userMarkdown ?? f.mdRendering.userMarkdown,
+			userMath: delta?.mdRendering?.userMath ?? f.mdRendering.userMath,
 		},
 	};
 }

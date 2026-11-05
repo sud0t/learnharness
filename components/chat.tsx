@@ -14,7 +14,7 @@ import {
 	ConversationScrollButton,
 } from "@/components/ai-elements/conversation";
 import { Message, MessageContent, MessageResponse } from "@/components/ai-elements/message";
-import { PathText } from "@/components/file-path-chip";
+import { UserText } from "@/components/user-text";
 import { Reasoning, ReasoningContent, ReasoningTrigger } from "@/components/ai-elements/reasoning";
 import { Shimmer } from "@/components/ai-elements/shimmer";
 import { BrailleSpinner } from "@/components/braille-spinner";
@@ -1499,8 +1499,8 @@ export function Chat({
 										    FULL-opacity text (learner words are content, not whisper).
 										    Distinguished from user thinking at a glance: thinking is
 										    collapsed + 50% italic; this is upright and present.
-										    User text renders plain — the model's LaTeX pipeline is not
-										    applied to learner-authored text ($ stays $, no surprises).
+										    User text renders through UserText: markdown and math unless
+										    the Appearance toggles turn them off.
 										    Rendered WITHOUT the Message wrapper — that is the bubble. */
 											<div
 										data-testid="user-message"
@@ -1517,9 +1517,10 @@ export function Chat({
 												    sits INSIDE the rail, same mono-xs register and same 1ch
 												    rail as the thinking rows — one quote geometry. */}
 												<div className="font-medium uppercase tracking-wide text-muted-foreground">You</div>
-												<div className="lh-prose whitespace-pre-wrap text-foreground">
-													<PathText text={m.parts.filter((p) => p.type === "text").map((p) => p.text).join("\n")} />
-												</div>
+												<UserText
+													className="text-foreground"
+													text={m.parts.filter((p) => p.type === "text").map((p) => p.text).join("\n")}
+												/>
 											</div>
 									) : (
 									<Message from="assistant" className="max-w-full">

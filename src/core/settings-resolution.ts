@@ -212,6 +212,8 @@ export function resolveSettings(record: UserSettings | null): EffectiveSettings 
 				headingWeight: md.headingWeight ?? factoryMd.headingWeight,
 				boldColor: md.boldColor ?? factoryMd.boldColor,
 				italicColor: md.italicColor ?? factoryMd.italicColor,
+				userMarkdown: md.userMarkdown ?? factoryMd.userMarkdown,
+				userMath: md.userMath ?? factoryMd.userMath,
 			},
 		},
 		graph: {

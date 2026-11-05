@@ -332,9 +332,10 @@ export type MessageResponseProps = ComponentProps<typeof Streamdown>;
 // own highlighter); the cast papers over the .d.ts mismatch.
 //
 // Standard dollar authoring (owner, 2026-10-12): $...$ inline, $$ fenced
-// on separate lines for display. transformMathDelimiters stays as the
-// compatibility reader for old \(...\)/\[...\] content; its two-dollar
-// output remains valid alongside native single-dollar math.
+// on separate lines for display. transformMathDelimiters also displays $$...$$
+// written inside a line, and stays as the compatibility reader for old
+// \(...\)/\[...\] content; its two-dollar output remains valid alongside
+// native single-dollar math.
 //
 // remark-breaks rides in the cjk plugin's remarkPluginsAfter slot (public
 // PluginConfig API): Streamdown's bare `remarkPlugins` PROP would REPLACE the
@@ -361,6 +362,10 @@ export const streamdownPlugins = {
 // separate sanitization/hardening and all other Markdown repairs stay enabled.
 export const streamdownRemend = { htmlTags: false };
 
+// Source Sans 3 + emphasis-color tokens on every markdown surface
+// (labels stay JetBrains Mono). Unlayered plain CSS wins over text-sm.
+export const markdownSurfaceClass = "lh-prose size-full [&>*:first-child]:mt-0 [&>*:last-child]:mb-0";
+
 export const MessageResponse = memo(
   ({ className, children, ...props }: MessageResponseProps) => {
     // Legacy backslash delimiters are converted in a single linear scan;
@@ -373,12 +378,7 @@ export const MessageResponse = memo(
 
     return (
       <Streamdown
-        className={cn(
-          // Source Sans 3 + emphasis-color tokens on every markdown surface
-          // (labels stay JetBrains Mono). Unlayered plain CSS wins over text-sm.
-          "lh-prose size-full [&>*:first-child]:mt-0 [&>*:last-child]:mb-0",
-          className
-        )}
+        className={cn(markdownSurfaceClass, className)}
         components={mdComponents}
         plugins={streamdownPlugins}
         remend={streamdownRemend}

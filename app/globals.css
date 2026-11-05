@@ -213,6 +213,15 @@ body {
 	color: var(--lh-ink-italic);
 }
 
+/* The learner's words on answered cards: quote marks that hold around any
+   block layout, since the text may span paragraphs, lists or equations. */
+.lh-quoted > :first-child::before {
+	content: "“";
+}
+.lh-quoted > :last-child::after {
+	content: "”";
+}
+
 /* Markdown lists indent from the prose edge (owner ask, 2026-09-24):
    streamdown ships list-inside with no container padding (top-level
    markers sit ON the text edge — nested lists get their pl-6 only via

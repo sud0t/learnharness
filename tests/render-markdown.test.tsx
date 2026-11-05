@@ -54,8 +54,42 @@ describe("math delimiter transform (pure unit)", () => {
 	});
 
 	it("leaves currency untouched", () => {
-		const md = "It costs $5 and $10 more. $$big$$ sums too.";
+		const md = "It costs $5 and $10 more.";
 		assert.equal(transformMathDelimiters(md), md);
+	});
+
+	it("turns two-dollar math inside a line into a display block", () => {
+		assert.equal(transformMathDelimiters("$$E=mc^2$$"), "$$\nE=mc^2\n$$");
+		assert.equal(transformMathDelimiters("a\n\n$$x$$\n\nb"), "a\n\n$$\nx\n$$\n\nb");
+		assert.equal(transformMathDelimiters("a $$x$$ b"), "a \n\n$$\nx\n$$\n\n b");
+		assert.equal(transformMathDelimiters("a $$x\ny$$ b"), "a \n\n$$\nx\ny\n$$\n\n b");
+	});
+
+	it("leaves fenced and empty two-dollar spans alone", () => {
+		for (const md of ["$$\nx\n$$", "a $$ $$ b"]) assert.equal(transformMathDelimiters(md), md);
+	});
+
+	it("keeps two-dollar math inline where a block would break the structure", () => {
+		for (const md of [
+			"- item $$x$$\n- next",
+			"1. $$x$$\n2. y",
+			"* $$x$$",
+			"- item\n  $$x$$\n- next",
+			"> see $$x$$ here",
+			"# Energy $$x$$",
+			"| a | b |\n|---|---|\n| $$x$$ | y |",
+			"a | b\n--- | ---\n$$x$$ | y",
+			"| $$x$$ | b |\n|---|---|\n| 1 | 2 |",
+		]) assert.equal(transformMathDelimiters(md), md);
+	});
+
+	it("reads pipes in math as math, not as a table", () => {
+		assert.equal(transformMathDelimiters("$$|x| + |y|$$"), "$$\n|x| + |y|\n$$");
+		assert.equal(transformMathDelimiters("---\n\n$$|x|$$"), "---\n\n$$\n|x|\n$$");
+	});
+
+	it("does not read two-dollar literals in code", () => {
+		for (const md of ["`$$x$$` literal", "```\n$$x$$\n```"]) assert.equal(transformMathDelimiters(md), md);
 	});
 
 	it("leaves escaped delimiters untouched (\\\\( is a literal backslash)", () => {
@@ -291,7 +325,7 @@ describe("escaped dollars inside math — transform units", () => {
 	});
 
 	it("leaves display spans untouched — a lone $ can't close $$, \\$ already survives", () => {
-		const md = "$$x = \\$5,\\ q = \\$12$$";
+		const md = "$$\nx = \\$5,\\ q = \\$12\n$$";
 		assert.equal(transformMathDelimiters(md), md);
 	});
 

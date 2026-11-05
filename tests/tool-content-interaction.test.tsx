@@ -68,7 +68,9 @@ test("committed-answer reveals keep the first paragraph inline without flattenin
 	const root = createRoot(host);
 	try {
 		await act(async () => root.render(<AnsweredCard answer={answer} input={input} />));
-		const paragraphs = host.querySelectorAll("p");
+		const learner = host.querySelector(".lh-quoted");
+		assert.equal(learner?.textContent, "Synthetic answer", "the learner's words render as markdown");
+		const paragraphs = [...host.querySelectorAll("p")].filter(p => !learner?.contains(p));
 		assert.equal(paragraphs.length, 3, "question plus two committed-answer paragraphs");
 		assert.ok(paragraphs[1]!.parentElement!.classList.contains("[&>p:first-child]:inline"));
 		assert.ok(!paragraphs[1]!.parentElement!.classList.contains("[&_p]:inline"));

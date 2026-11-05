@@ -332,6 +332,26 @@ export function AppearanceSection({
 					onCommit={(v) => onSectionChange({ ...appearance, mdRendering: { ...md, italicColor: v === "" ? null : v } })}
 				/>
 			</SettingsRow>
+			<SettingsRow label="Markdown in your messages" hint="Off shows your exact text" testid="row-user-markdown">
+				<Toggle
+					checked={md?.userMarkdown ?? true}
+					label="markdown in your messages"
+					onChange={(on) => onSectionChange({ ...appearance, mdRendering: { ...md, userMarkdown: on } })}
+				/>
+			</SettingsRow>
+			<SettingsRow
+				label="Math in your messages"
+				hint="Off shows $ as typed"
+				testid="row-user-math"
+				dimmed={!(md?.userMarkdown ?? true)}
+			>
+				<Toggle
+					checked={md?.userMath ?? true}
+					disabled={!(md?.userMarkdown ?? true)}
+					label="math in your messages"
+					onChange={(on) => onSectionChange({ ...appearance, mdRendering: { ...md, userMath: on } })}
+				/>
+			</SettingsRow>
 		</>
 	);
 }

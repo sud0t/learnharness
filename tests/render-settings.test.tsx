@@ -295,6 +295,27 @@ describe("AppearanceSection (thin SSR)", () => {
 		assert.ok(tagOf(html, "row-mode").includes("opacity-40"), "mode row dims whole");
 	});
 
+	it("the user-text toggles default on and sit beside the markdown options", () => {
+		const html = renderToStaticMarkup(<AppearanceSection appearance={undefined} onSectionChange={() => {}} />);
+		const markdown = tagOf(html, "toggle-markdown-in-your-messages");
+		const math = tagOf(html, "toggle-math-in-your-messages");
+		assert.ok(markdown.includes('aria-checked="true"'));
+		assert.ok(math.includes('aria-checked="true"'));
+		assert.ok(!math.includes("disabled"), "math is live while markdown is on");
+		assert.ok(!tagOf(html, "row-user-math").includes("opacity-40"));
+	});
+
+	it("markdown off dims and locks the math toggle, keeping its stored value", () => {
+		const html = renderToStaticMarkup(
+			<AppearanceSection appearance={{ mdRendering: { userMarkdown: false } }} onSectionChange={() => {}} />,
+		);
+		const math = tagOf(html, "toggle-math-in-your-messages");
+		assert.ok(tagOf(html, "toggle-markdown-in-your-messages").includes('aria-checked="false"'));
+		assert.ok(math.includes("disabled"));
+		assert.ok(math.includes('aria-checked="true"'));
+		assert.ok(tagOf(html, "row-user-math").includes("opacity-40"));
+	});
+
 	it("hex inputs carry the factory placeholders; prose size resolves against the factory", () => {
 		const html = renderToStaticMarkup(<AppearanceSection appearance={undefined} onSectionChange={() => {}} />);
 		assert.ok(html.includes(`placeholder="#141414"`));

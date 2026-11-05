@@ -385,6 +385,12 @@ export interface MdRenderingSettings {
 	boldColor?: string | null;
 	/** Color for *italic* spans (default #ffffff). */
 	italicColor?: string | null;
+	/** Render markdown in the learner's own text (default true). Off shows
+	 *  the exact text, which also leaves math unrendered. */
+	userMarkdown?: boolean;
+	/** Render math in the learner's own text (default true). Only applies
+	 *  while userMarkdown is on. */
+	userMath?: boolean;
 }
 
 /** Appearance settings — mode, colors, type, markdown emphasis. */
@@ -506,6 +512,8 @@ export interface FactorySettings {
 			headingWeight: number;
 			boldColor: string | null;
 			italicColor: string | null;
+			userMarkdown: boolean;
+			userMath: boolean;
 		};
 	};
 	graph: Required<GraphSettings>;
@@ -522,7 +530,7 @@ export const FACTORY_SETTINGS: FactorySettings = {
 		fontFamily: null, // Source Sans 3
 		proseFontSize: 16,
 		sessionNameSerif: true,
-		mdRendering: { headingWeight: 900, boldColor: null, italicColor: null },
+		mdRendering: { headingWeight: 900, boldColor: null, italicColor: null, userMarkdown: true, userMath: true },
 	},
 	graph: { enabled: true, rendering: true, extractionChunkTokens: 4096 },
 	compaction: { thresholdTokens: 150_000 },
@@ -745,6 +753,8 @@ function sanitizeMdRendering(raw: unknown): MdRenderingSettings {
 	}
 	if (r.boldColor !== undefined) out.boldColor = sanitizeHexOrNull(r.boldColor);
 	if (r.italicColor !== undefined) out.italicColor = sanitizeHexOrNull(r.italicColor);
+	if (typeof r.userMarkdown === "boolean") out.userMarkdown = r.userMarkdown;
+	if (typeof r.userMath === "boolean") out.userMath = r.userMath;
 	return out;
 }
 

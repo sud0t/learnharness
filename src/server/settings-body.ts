@@ -296,6 +296,18 @@ export function parseAppearanceSettingsBody(body: unknown): SettingsBodyResult<A
 			if (parsed.error) return { ok: false, error: parsed.error };
 			rendering.italicColor = parsed.color ?? null;
 		}
+		if (md.userMarkdown !== undefined) {
+			if (typeof md.userMarkdown !== "boolean") {
+				return { ok: false, error: "mdRendering.userMarkdown must be a boolean" };
+			}
+			rendering.userMarkdown = md.userMarkdown;
+		}
+		if (md.userMath !== undefined) {
+			if (typeof md.userMath !== "boolean") {
+				return { ok: false, error: "mdRendering.userMath must be a boolean" };
+			}
+			rendering.userMath = md.userMath;
+		}
 		if (Object.keys(rendering).length) settings.mdRendering = rendering;
 	}
 	return { ok: true, settings };

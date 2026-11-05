@@ -21,6 +21,43 @@ function blockPosition(text: string, i: number): boolean {
 	return /^[ \t]*$/.test(text.slice(text.lastIndexOf("\n", i - 1) + 1, i));
 }
 
+const TABLE_DELIMITER = /^\s*\|?\s*:?-+:?\s*(?:\|\s*:?-+:?\s*)*\|?\s*$/;
+const delimiterRow = (line: string) => line.includes("|") && TABLE_DELIMITER.test(line);
+
+/** True when the line at `i` belongs to a GFM table: a delimiter row sits
+ * above it in the same block, or directly below it (the header row). Pipes
+ * alone prove nothing, since `$$|x|$$` is ordinary math. */
+function inTable(text: string, i: number): boolean {
+	for (let end = text.lastIndexOf("\n", i - 1); end > 0;) {
+		const start = text.lastIndexOf("\n", end - 1) + 1;
+		const line = text.slice(start, end);
+		if (!line.trim()) break;
+		if (delimiterRow(line)) return true;
+		end = start - 1;
+	}
+	const eol = text.indexOf("\n", i);
+	if (eol < 0) return false;
+	const next = text.indexOf("\n", eol + 1);
+	return delimiterRow(text.slice(eol + 1, next < 0 ? text.length : next));
+}
+
+/** Where a display block would break the surrounding structure: indented
+ * content, list items, quotes, headings and table rows keep two-dollar math
+ * inline. */
+function staysInline(text: string, i: number): boolean {
+	const prefix = text.slice(text.lastIndexOf("\n", i - 1) + 1, i);
+	return /^(?:[ \t]+|#{1,6}[ \t]|>|\||(?:[-*+]|\d+[.)])[ \t])/.test(prefix) || inTable(text, i);
+}
+
+/** A display fence for the span at `start`, padded with blank lines so a
+ * mid-paragraph span splits the paragraph into a clean block. */
+function displayBlock(text: string, start: number, raw: string, body: string): string {
+	const before = blockPosition(text, start) ? "" : "\n\n";
+	const end = start + raw.length;
+	const after = end === text.length || text[end] === "\n" ? "" : "\n\n";
+	return `${before}$$\n${body}\n$$${after}`;
+}
+
 /** micromark closes native single-dollar spans at escaped dollars too.
  * Replace an intended literal dollar with equivalent dollar-free TeX before
  * tokenization. Code, prose, unbalanced spans and display dollars stay raw. */
@@ -35,22 +72,27 @@ function replaceEscapedDollars(content: string): string {
 }
 
 /** Read old \(...\)/\[...\] syntax without touching literal content or
- * reparsing native math as Markdown. Dollar authoring remains native. */
+ * reparsing native math as Markdown. Dollar authoring remains native, except
+ * that $$...$$ written inside a line displays as its own block, like a fence.
+ * \(...\) still emits the two-dollar inline form: this is one pass over the
+ * source, so that output is never read back as a display span. */
 export function transformMathDelimiters(markdown: string): string {
 	let offset = 0;
 	return readContentSpans(markdown).map(span => {
 		const start = offset; offset += span.raw.length;
 		if (span.kind !== "math") return span.raw;
 		if (span.open === "$") return "$" + replaceEscapedDollars(span.body) + span.close;
-		if (span.open !== "\\(" && span.open !== "\\[") return span.raw;
 		const body = span.body.trim();
+		if (span.open === "$$") {
+			return span.display || !body || staysInline(markdown, start)
+				? span.raw
+				: displayBlock(markdown, start, span.raw, body);
+		}
+		if (span.open !== "\\(" && span.open !== "\\[") return span.raw;
 		if (!body) return span.raw;
 		if (span.open === "\\(") return `$$${body}$$`;
 		if (indented(markdown, start)) return `$$${body.replace(/\s*\n\s*/g, " ")}$$`;
-		const before = blockPosition(markdown, start) ? "" : "\n\n";
-		const end = start + span.raw.length;
-		const after = end === markdown.length || markdown[end] === "\n" ? "" : "\n\n";
-		return `${before}$$\n${body}\n$$${after}`;
+		return displayBlock(markdown, start, span.raw, body);
 	}).join("");
 }
 
