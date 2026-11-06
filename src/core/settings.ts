@@ -37,6 +37,7 @@ import type { ChatSettings } from "./contracts/chat.ts";
 import { isSearchEngineId, type SearchEngineId } from "./search.ts";
 import { isDictationLanguage, type DictationLanguage } from "./dictation.ts";
 import { parseFileAccessSettings, type FileAccessSettings } from "./file-access.ts";
+import { isSnippetData, type SnippetData } from "./latex-suite/snippet-data.ts";
 
 /** The schema version this code understands. Bump ONLY for breaking shape
  *  changes (a field renamed/meaning changed); pure additions never bump. */
@@ -394,6 +395,10 @@ export interface MdRenderingSettings {
 	/** Format the draft in the input as it is typed, hiding Markdown symbols
 	 *  away from the caret. Needs userMarkdown; userMath still governs math. */
 	formatAsYouType?: boolean;
+	/** Latex Suite's snippets and tabstops in the text boxes. Needs math in your messages. */
+	latexSnippets?: boolean;
+	/** The learner's own snippets, as plain data. Absent means the shipped set. */
+	customSnippets?: SnippetData;
 }
 
 /** Appearance settings — mode, colors, type, markdown emphasis. */
@@ -411,6 +416,12 @@ export interface AppearanceSettings {
 	proseFontSize?: number;
 	/** Session names in CMU Serif (default true — today's look). */
 	sessionNameSerif?: boolean;
+	/** Vim keys in every multi-line box (default false). */
+	vimMode?: boolean;
+	/** Closing brackets and quotes as you type in every multi-line box (default true). */
+	autoPairBrackets?: boolean;
+	/** Closing Markdown symbols as you type in every multi-line box (default true). */
+	autoPairMarkdown?: boolean;
 	mdRendering?: MdRenderingSettings;
 }
 
@@ -511,6 +522,9 @@ export interface FactorySettings {
 		fontFamily: string | null;
 		proseFontSize: number;
 		sessionNameSerif: boolean;
+		vimMode: boolean;
+		autoPairBrackets: boolean;
+		autoPairMarkdown: boolean;
 		mdRendering: {
 			headingWeight: number;
 			boldColor: string | null;
@@ -518,6 +532,8 @@ export interface FactorySettings {
 			userMarkdown: boolean;
 			userMath: boolean;
 			formatAsYouType: boolean;
+			latexSnippets: boolean;
+			customSnippets: SnippetData | null;
 		};
 	};
 	graph: Required<GraphSettings>;
@@ -534,7 +550,10 @@ export const FACTORY_SETTINGS: FactorySettings = {
 		fontFamily: null, // Source Sans 3
 		proseFontSize: 16,
 		sessionNameSerif: true,
-		mdRendering: { headingWeight: 900, boldColor: null, italicColor: null, userMarkdown: true, userMath: true, formatAsYouType: true },
+		vimMode: false,
+		autoPairBrackets: true,
+		autoPairMarkdown: true,
+		mdRendering: { headingWeight: 900, boldColor: null, italicColor: null, userMarkdown: true, userMath: true, formatAsYouType: true, latexSnippets: true, customSnippets: null },
 	},
 	graph: { enabled: true, rendering: true, extractionChunkTokens: 4096 },
 	compaction: { thresholdTokens: 150_000 },
@@ -760,6 +779,13 @@ function sanitizeMdRendering(raw: unknown): MdRenderingSettings {
 	if (typeof r.userMarkdown === "boolean") out.userMarkdown = r.userMarkdown;
 	if (typeof r.userMath === "boolean") out.userMath = r.userMath;
 	if (typeof r.formatAsYouType === "boolean") out.formatAsYouType = r.formatAsYouType;
+	if (typeof r.latexSnippets === "boolean") out.latexSnippets = r.latexSnippets;
+	if (isSnippetData(r.customSnippets)) {
+		// Only the set itself: a bad entry stays, for the editor to point out, but
+		// nothing else in the record can come along with it.
+		const { variables, snippets } = r.customSnippets;
+		out.customSnippets = variables ? { variables, snippets } : { snippets };
+	}
 	return out;
 }
 
@@ -775,6 +801,12 @@ function sanitizeAppearance(raw: Record<string, unknown>): AppearanceSettings {
 	}
 	const sessionNameSerif = boolOrDrop(raw.sessionNameSerif);
 	if (sessionNameSerif !== undefined) out.sessionNameSerif = sessionNameSerif;
+	const vimMode = boolOrDrop(raw.vimMode);
+	if (vimMode !== undefined) out.vimMode = vimMode;
+	const autoPairBrackets = boolOrDrop(raw.autoPairBrackets);
+	if (autoPairBrackets !== undefined) out.autoPairBrackets = autoPairBrackets;
+	const autoPairMarkdown = boolOrDrop(raw.autoPairMarkdown);
+	if (autoPairMarkdown !== undefined) out.autoPairMarkdown = autoPairMarkdown;
 	if (raw.mdRendering !== undefined) out.mdRendering = sanitizeMdRendering(raw.mdRendering);
 	return out;
 }

@@ -61,7 +61,10 @@ export function readPathInput(root: HTMLElement): string {
 
 /** Map a logical UTF-16 offset to a DOM boundary, snapping a chip interior atomically. */
 export function pathInputPoint(root: HTMLElement, offset: number): DOMPoint {
-	const parts = segments(root);
+	return pointIn(root, segments(root), offset);
+}
+
+function pointIn(root: HTMLElement, parts: Segment[], offset: number): DOMPoint {
 	const trailing = root.lastChild;
 	if (trailing?.nodeType === 1 && (trailing as Element).hasAttribute(PATH_CARET_ATTRIBUTE)
 		&& offset >= parts.reduce((length, part) => length + part.text.length, 0)) {
@@ -139,6 +142,29 @@ export function readPathSelection(root: HTMLElement): TextSelection | null {
 	return anchor === null || focus === null ? null : { anchor, focus };
 }
 
+/** Ranges over the current drawing, which any later paint invalidates. Walks the
+ * DOM once, for callers with too many ranges to look each end up alone. */
+export type Highlights = { add(range: AbstractRange): unknown; delete(range: AbstractRange): boolean };
+
+/** A named highlight every box on the page shares. Null where the browser has none. */
+export function sharedHighlight(name: string): Highlights | null {
+	if (typeof CSS === "undefined" || !CSS.highlights || typeof Highlight === "undefined") return null;
+	let highlight = CSS.highlights.get(name) as Highlight | undefined;
+	if (!highlight) CSS.highlights.set(name, highlight = new Highlight());
+	return highlight;
+}
+
+export function pathInputRanges(root: HTMLElement, spans: { start: number; end: number }[]): Range[] {
+	const parts = segments(root);
+	return spans.map(({ start, end }) => {
+		const range = root.ownerDocument.createRange();
+		const from = pointIn(root, parts, start), to = pointIn(root, parts, end);
+		range.setStart(from.node, from.offset);
+		range.setEnd(to.node, to.offset);
+		return range;
+	});
+}
+
 export function restorePathSelection(root: HTMLElement, selection: TextSelection): void {
 	const browserSelection = root.ownerDocument.getSelection?.();
 	if (!browserSelection) return;
@@ -200,7 +226,14 @@ function equationHtml(math: LiveMath): string {
 	const key = `${math.display ? "d" : "i"}:${math.tex}`;
 	let html = equationCache.get(key);
 	if (html === undefined) {
-		html = katex.renderToString(math.tex, { displayMode: math.display, throwOnError: false, strict: "ignore", errorColor: "var(--color-muted-foreground)" });
+		try {
+			html = katex.renderToString(math.tex, { displayMode: math.display, throwOnError: false, strict: "ignore", errorColor: "var(--color-muted-foreground)" });
+		} catch {
+			// `throwOnError` only covers a ParseError, and a space in an environment's
+			// name is a plain Error. This is the markup KaTeX gives a ParseError.
+			const source = math.tex.replaceAll("&", "&amp;").replaceAll("<", "&lt;").replaceAll(">", "&gt;");
+			html = `<span class="katex-error" style="color:var(--color-muted-foreground)">${source}</span>`;
+		}
 		if (equationCache.size >= 200) equationCache.delete(equationCache.keys().next().value!);
 		equationCache.set(key, html);
 	}
@@ -338,7 +371,7 @@ export function renderLiveInput(root: HTMLElement, value: string, format: LiveFo
 
 /** Show the source of what the selection touches. Toggles attributes only:
  * the DOM and the browser's selection stay exactly as they were. */
-export function revealLiveInput(view: LiveView, selection: TextSelection | null): void {
+export function revealLiveInput(view: LiveView, selection: TextSelection | null): boolean {
 	const next = revealedLiveKeys(view.format, selection);
 	// A hidden noneditable widget still costs a key press to cross, so it only
 	// stays noneditable while it is on screen.
@@ -348,9 +381,28 @@ export function revealLiveInput(view: LiveView, selection: TextSelection | null)
 		if (show) element.removeAttribute("contenteditable");
 		else element.setAttribute("contenteditable", "false");
 	};
-	for (const key of view.shown) if (!next.has(key)) for (const element of view.elements.get(key) ?? []) toggle(element, false);
-	for (const key of next) if (!view.shown.has(key)) for (const element of view.elements.get(key) ?? []) toggle(element, true);
+	const hiding = [...view.shown].filter((key) => !next.has(key)), showing = [...next].filter((key) => !view.shown.has(key));
+	for (const key of hiding) for (const element of view.elements.get(key) ?? []) toggle(element, false);
+	for (const key of showing) for (const element of view.elements.get(key) ?? []) toggle(element, true);
 	view.shown = next;
+	return hiding.length + showing.length > 0;
+}
+
+/** A mark at a spot with no character to paint, such as a line's end. Not text:
+ * segments() skips it, and with no room of its own it moves nothing. */
+export function markPathSpot(root: HTMLElement, offset: number, className: string): HTMLElement {
+	const mark = root.ownerDocument.createElement("span");
+	mark.setAttribute(PATH_CARET_ATTRIBUTE, "");
+	mark.setAttribute("aria-hidden", "true");
+	mark.setAttribute("contenteditable", "false");
+	mark.className = className;
+	const { node, offset: at } = pathInputPoint(root, offset);
+	if (node.nodeType === 3) {
+		const text = node as Text;
+		const after = at === 0 ? text : at === text.length ? text.nextSibling : text.splitText(at);
+		text.parentNode!.insertBefore(mark, after);
+	} else node.insertBefore(mark, node.childNodes[at] ?? null);
+	return mark;
 }
 
 const blockEquations = (view: LiveView) => view.format.items.filter((item): item is LiveMath => item.kind === "math" && item.display);
@@ -374,17 +426,108 @@ export function previewArrowTarget(view: LiveView, value: string, offset: number
 	return null;
 }
 
+/** The gap kept between what is scrolled to and the box's edges. This is the
+ * CSS scroll-padding the browser's own scrolling honours, so a script edit and
+ * a typed key stop at the same spot, with the box's padding still showing. */
+export function scrollInsets(root: HTMLElement): { top: number; bottom: number } {
+	const style = root.ownerDocument.defaultView?.getComputedStyle?.(root);
+	return { top: parseFloat(style?.scrollPaddingTop ?? "") || 0, bottom: parseFloat(style?.scrollPaddingBottom ?? "") || 0 };
+}
+
 /** The browser only scrolls the caret into view, so a preview under the last
- * line of a tall draft would stay clipped. Never scrolls the source out of view. */
-export function keepPreviewInView(root: HTMLElement, view: LiveView): void {
+ * line of a tall draft would stay clipped. Never scrolls the source out of view,
+ * nor the caret, which a selection can leave far above what it reveals. */
+export function keepPreviewInView(root: HTMLElement, view: LiveView, focus: number | null = null): void {
 	for (const key of view.shown) {
 		const preview = view.previews.get(key);
 		if (!preview) continue;
 		const box = root.getBoundingClientRect(), bottom = preview.getBoundingClientRect().bottom;
 		const source = view.elements.get(key)?.[0]?.getBoundingClientRect().top ?? bottom;
-		const overflow = Math.min(bottom - box.bottom, source - box.top);
+		const caret = focus === null ? null : caretRect(root, focus);
+		const highest = Math.min(source, caret?.top ?? source);
+		const inset = scrollInsets(root);
+		const overflow = Math.min(bottom + inset.bottom - box.bottom, highest - inset.top - box.top);
 		if (overflow > 0) root.scrollTop += overflow;
 	}
+}
+
+/** Where the caret draws, or null where that cannot be measured. Chromium gives
+ * a collapsed range no box beside a line break, so those spots use the character
+ * or element next to the caret, which shares its row. */
+export function caretRect(root: HTMLElement, offset: number): DOMRect | null {
+	return pointRect(root, pathInputPoint(root, offset));
+}
+
+function pointRect(root: HTMLElement, point: DOMPoint): DOMRect | null {
+	const range = root.ownerDocument.createRange?.();
+	if (!range?.getClientRects) return null;
+	const text = point.node.nodeType === 3 ? point.node as Text : null;
+	const boxes = () => Array.from(range.getClientRects()).filter((box) => box.height > 0);
+	const skipEmpty = (node: Node | null, step: "nextSibling" | "previousSibling") => {
+		while (node?.nodeType === 3 && !(node as Text).length) node = node[step];
+		return node;
+	};
+	range.setStart(point.node, point.offset);
+	range.collapse(true);
+	let box = boxes().at(-1);
+	if (!box && text && point.offset < text.length) {
+		range.setEnd(text, point.offset + 1);
+		box = boxes()[0];
+	}
+	const next = skipEmpty(text ? text.nextSibling : point.node.childNodes[point.offset] ?? null, "nextSibling");
+	if (!box && next) {
+		range.selectNode(next);
+		box = boxes()[0];
+	}
+	const previous = skipEmpty(text ? text.previousSibling : point.node.childNodes[point.offset - 1] ?? null, "previousSibling");
+	if (!box && previous) {
+		range.selectNode(previous);
+		box = boxes().at(-1);
+	}
+	return box ?? null;
+}
+
+/** A browser scrolls the caret into view after its own edits, never after a
+ * script sets the selection. Line breaks, paste, formatted deletion, undo and
+ * dictation are all drawn by this editor, so they scroll here. Anything else
+ * that moves the caret from script calls this after doing so. */
+export function keepCaretInView(root: HTMLElement, offset: number): void {
+	const caret = caretRect(root, offset);
+	if (caret) scrollToCaret(root, caret);
+}
+
+function scrollToCaret(root: HTMLElement, caret: DOMRect): void {
+	const box = root.getBoundingClientRect(), inset = scrollInsets(root);
+	const edge = box.top + root.clientTop;
+	const top = edge + inset.top, bottom = edge + root.clientHeight - inset.bottom;
+	const left = box.left + root.clientLeft, right = left + root.clientWidth;
+	// A single-line box is shorter than its caret, which fits as well as it can.
+	if (caret.height <= bottom - top) {
+		if (caret.bottom > bottom) root.scrollTop += Math.ceil(caret.bottom - bottom);
+		else if (caret.top < top) root.scrollTop -= Math.ceil(top - caret.top);
+	}
+	if (caret.right > right) root.scrollLeft += Math.ceil(caret.right - right);
+	else if (caret.left < left) root.scrollLeft -= Math.ceil(left - caret.left);
+}
+
+/** Where the browser has a selection's moving end. An offset can be two spots, one
+ * either side of a preview, and only the selection knows which it took. */
+function selectionEndRect(root: HTMLElement): DOMRect | null {
+	const selection = root.ownerDocument.getSelection?.(), node = selection?.focusNode;
+	return node && root.contains(node) ? pointRect(root, { node, offset: selection!.focusOffset }) : null;
+}
+
+/** Whether any of a selection's moving end shows in the box now. */
+export function selectionEndInView(root: HTMLElement): boolean {
+	const end = selectionEndRect(root);
+	if (!end) return false;
+	const top = root.getBoundingClientRect().top + root.clientTop;
+	return end.bottom > top && end.top < top + root.clientHeight;
+}
+
+export function keepSelectionEndInView(root: HTMLElement): void {
+	const end = selectionEndRect(root);
+	if (end) scrollToCaret(root, end);
 }
 
 /** A browser treats both sides of hidden symbols as one spot and keeps the
@@ -470,18 +613,41 @@ export function normalizePathEdit(snapshot: PathEditSnapshot, singleLine: boolea
 export class PathInputHistory {
 	private undoStack: PathEditSnapshot[] = [];
 	private redoStack: PathEditSnapshot[] = [];
+	private groupStart: number | null = null;
+	/** Undo walks one step at a time down to here before a group counts as one.
+	 *  A snippet undoes to its trigger, and then its key, even in a whole session. */
+	private stepFloor: number | null = null;
 	push(snapshot: PathEditSnapshot) {
 		this.undoStack.push({ value: snapshot.value, selection: { ...snapshot.selection } });
 		this.redoStack = [];
+		this.stepFloor = null;
 	}
-	reset() { this.undoStack = []; this.redoStack = []; }
+	/** A snippet's own steps: the text before its key, then the key typed, if that is a step. */
+	pushExpansion(before: PathEditSnapshot, literal?: PathEditSnapshot) {
+		const floor = this.undoStack.length;
+		this.push(before);
+		if (literal) this.push(literal);
+		if (this.groupStart !== null) this.stepFloor = floor;
+	}
+	/** Until closeGroup, every push counts as one step. Open already: stays open. */
+	openGroup() { this.groupStart ??= this.undoStack.length; }
+	closeGroup() {
+		this.stepFloor = null;
+		if (this.groupStart === null) return;
+		this.undoStack.length = Math.min(this.undoStack.length, this.groupStart + 1);
+		this.groupStart = null;
+	}
+	reset() { this.undoStack = []; this.redoStack = []; this.groupStart = null; this.stepFloor = null; }
 	undo(current: PathEditSnapshot): PathEditSnapshot | null {
+		if (this.stepFloor === null || this.undoStack.length <= this.stepFloor) this.closeGroup();
 		const previous = this.undoStack.pop();
 		if (!previous) return null;
 		this.redoStack.push(current);
 		return previous;
 	}
 	redo(current: PathEditSnapshot): PathEditSnapshot | null {
+		// Stepped back inside a group, the group is still the session it was.
+		if (this.stepFloor === null) this.closeGroup();
 		const next = this.redoStack.pop();
 		if (!next) return null;
 		this.undoStack.push(current);

@@ -1,6 +1,9 @@
 /** Source-preserving boundaries for tool-authored Markdown. Recovery never
  * mutates input, reserializes Markdown, or enters protected literal content. */
 import katex from "katex";
+// Adds \ce and \pu to KaTeX itself. Everything that renders math shares that one
+// KaTeX and comes through this file, so they all understand them.
+import "katex/contrib/mhchem";
 import { fromMarkdown } from "mdast-util-from-markdown";
 import { mathFromMarkdown } from "mdast-util-math";
 import { math } from "micromark-extension-math";

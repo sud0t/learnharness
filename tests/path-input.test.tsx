@@ -118,6 +118,104 @@ test("owned history restores values and directional selections; a new edit disca
 	assert.equal(history.undo(b), null);
 });
 
+test("an open history group undoes as one step, with its last edit's selection on redo", () => {
+	const history = new PathInputHistory();
+	const at = (value: string) => ({ value, selection: { anchor: value.length, focus: value.length } });
+	history.push(at("base"));
+	history.openGroup();
+	history.push(at("a"));
+	history.push(at("ab"));
+	history.closeGroup();
+	assert.deepEqual(history.undo(at("abc")), at("a"));
+	assert.deepEqual(history.undo(at("a")), at("base"));
+	assert.equal(history.undo(at("base")), null);
+});
+
+test("a snippet's steps undo one at a time inside a group, and the group then undoes as one", () => {
+	const history = new PathInputHistory();
+	const at = (value: string) => ({ value, selection: { anchor: 0, focus: 0 } });
+	history.openGroup();
+	history.push(at("base"));
+	history.push(at("a"));
+	history.pushExpansion(at("ax"), at("ax2"));
+	assert.deepEqual(history.undo(at("a_{2}")), at("ax2"));
+	assert.deepEqual(history.undo(at("ax2")), at("ax"));
+	assert.deepEqual(history.undo(at("ax")), at("base"));
+	assert.equal(history.undo(at("base")), null);
+});
+
+test("redo stays in the group while stepped back through a snippet", () => {
+	const history = new PathInputHistory();
+	const at = (value: string) => ({ value, selection: { anchor: 0, focus: 0 } });
+	history.openGroup();
+	history.push(at("base"));
+	history.pushExpansion(at("x"), at("x2"));
+	assert.deepEqual(history.undo(at("x_{2}")), at("x2"));
+	assert.deepEqual(history.redo(at("x2")), at("x_{2}"));
+	assert.deepEqual(history.undo(at("x_{2}")), at("x2"));
+	assert.deepEqual(history.undo(at("x2")), at("x"));
+	assert.deepEqual(history.undo(at("x")), at("base"));
+});
+
+test("typing after a snippet makes the group whole again, and leaving it does too", () => {
+	const history = new PathInputHistory();
+	const at = (value: string) => ({ value, selection: { anchor: 0, focus: 0 } });
+	history.openGroup();
+	history.push(at("base"));
+	history.pushExpansion(at("x"), at("x2"));
+	history.push(at("x_{2}"));
+	assert.deepEqual(history.undo(at("x_{2}y")), at("base"));
+	history.reset();
+	history.openGroup();
+	history.push(at("base"));
+	history.pushExpansion(at("x"));
+	history.closeGroup();
+	assert.deepEqual(history.undo(at("x_{2}")), at("base"));
+});
+
+test("a snippet outside any group takes its steps one at a time, with or without the key", () => {
+	const history = new PathInputHistory();
+	const at = (value: string) => ({ value, selection: { anchor: 0, focus: 0 } });
+	history.pushExpansion(at("x"), at("x2"));
+	assert.deepEqual(history.undo(at("x_{2}")), at("x2"));
+	assert.deepEqual(history.undo(at("x2")), at("x"));
+	history.reset();
+	history.pushExpansion(at("x"));
+	assert.deepEqual(history.undo(at("x_{2}")), at("x"));
+	assert.equal(history.undo(at("x")), null);
+});
+
+test("a history group opens only once and closing none is harmless", () => {
+	const history = new PathInputHistory();
+	const at = (value: string) => ({ value, selection: { anchor: 0, focus: 0 } });
+	history.closeGroup();
+	history.openGroup();
+	history.push(at("a"));
+	history.openGroup();
+	history.push(at("ab"));
+	history.closeGroup();
+	assert.deepEqual(history.undo(at("abc")), at("a"));
+	assert.equal(history.undo(at("a")), null);
+});
+
+test("undo ends an open group, and reset forgets one", () => {
+	const history = new PathInputHistory();
+	const at = (value: string) => ({ value, selection: { anchor: 0, focus: 0 } });
+	history.openGroup();
+	history.push(at("a"));
+	history.push(at("ab"));
+	assert.deepEqual(history.undo(at("abc")), at("a"));
+	history.push(at("x"));
+	history.push(at("xy"));
+	assert.deepEqual(history.undo(at("xyz")), at("xy"));
+	history.openGroup();
+	history.reset();
+	history.push(at("p"));
+	history.push(at("q"));
+	assert.deepEqual(history.undo(at("r")), at("q"));
+	assert.deepEqual(history.undo(at("q")), at("p"));
+});
+
 test("textbox exposes accessibility, placeholder, global-drop markers and requested sizing", () => {
 	const html = renderToStaticMarkup(<PathInput value="" onValueChange={() => {}} placeholder="Ask" aria-label="Message" defaultDropTarget className="min-h-24 max-h-64" />);
 	for (const pattern of [/role="textbox"/, /aria-multiline="true"/, /aria-label="Message"/, /data-file-path-input=""/, /data-file-path-default=""/, /data-placeholder="Ask"/, /min-h-24 max-h-64/]) assert.match(html, pattern);
@@ -384,6 +482,47 @@ test("immutable SSR fallback never stomps native edits, controlled updates, chip
 	assert.equal(readPathInput(f.root), "");
 	assert.equal(f.root.textContent, "");
 	assert.equal(f.root.dataset.empty, "true");
+});
+
+test("a redraw while blurred keeps the caret for the next focus", async () => {
+	const f = await fixture("first words");
+	f.select(5);
+	f.doc.getElementById("elsewhere")!.focus();
+	await f.external("first words and dictated words");
+	// Redrawing removed the selection's nodes: a browser collapses it to the start.
+	f.selection.setBaseAndExtent(f.root, 0, f.root, 0);
+	f.root.focus();
+	await f.event("focus");
+	assert.deepEqual(readPathSelection(f.root), { anchor: 5, focus: 5 });
+	f.selection.setBaseAndExtent(f.root, 0, f.root, 0);
+	await f.event("focus");
+	assert.deepEqual(readPathSelection(f.root), { anchor: 0, focus: 0 }, "a later focus leaves the learner's own caret alone");
+});
+
+test("focusing from script after a blurred redraw returns to the caret, and a press does not", async () => {
+	const f = await fixture("first words");
+	f.select(5);
+	f.doc.getElementById("elsewhere")!.focus();
+	f.root.getBoundingClientRect = () => ({ top: 0, bottom: 100, left: 0, right: 300 }) as DOMRect;
+	Object.defineProperties(f.root, { clientHeight: { value: 100 }, clientWidth: { value: 300 }, clientTop: { value: 0 }, clientLeft: { value: 0 } });
+	(f.doc as unknown as { createRange: () => unknown }).createRange = () => ({
+		setStart() {}, setEnd() {}, collapse() {}, selectNode() {},
+		getClientRects: () => [{ top: 500, bottom: 522, left: 5, right: 5, height: 22 }],
+	});
+	await f.external("first words and dictated words");
+	f.root.scrollTop = 0;
+	f.root.focus();
+	await f.event("focus");
+	assert.equal(f.root.scrollTop, 422);
+
+	f.doc.getElementById("elsewhere")!.focus();
+	await f.external("first words and more dictated words");
+	f.root.scrollTop = 40;
+	await f.event("mousedown", { button: 0 });
+	f.root.focus();
+	await f.event("focus");
+	assert.equal(f.root.scrollTop, 40);
+	await f.event("mouseup", { detail: 1 });
 });
 
 test("external dictation append/reset and drop at an unfocused saved selection", async () => {

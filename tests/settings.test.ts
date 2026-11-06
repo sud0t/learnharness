@@ -151,11 +151,38 @@ describe("sanitizeUserSettings", () => {
 
 	it("keeps the user-text toggles only when they are booleans", () => {
 		const out = sanitizeUserSettings({
-			appearance: { mdRendering: { userMarkdown: false, userMath: "off", formatAsYouType: "off" } },
+			appearance: { mdRendering: { userMarkdown: false, userMath: "off", formatAsYouType: "off", latexSnippets: "off" } },
 		});
 		assert.equal(out?.appearance?.mdRendering?.userMarkdown, false);
 		assert.equal(out?.appearance?.mdRendering?.userMath, undefined);
 		assert.equal(out?.appearance?.mdRendering?.formatAsYouType, undefined);
+		assert.equal(out?.appearance?.mdRendering?.latexSnippets, undefined);
+	});
+
+	it("keeps auto pairs only when it is a boolean", () => {
+		for (const key of ["autoPairBrackets", "autoPairMarkdown"] as const) {
+			assert.equal(sanitizeUserSettings({ appearance: { [key]: false } })?.appearance?.[key], false);
+			assert.equal(sanitizeUserSettings({ appearance: { [key]: "off", mode: "light" } })?.appearance?.[key], undefined);
+		}
+	});
+
+	it("keeps a snippet set of the right shape, bad entries and all, for the editor to point out", () => {
+		const snippets = [{ trigger: "a", replacement: "b", options: "tA" }, { trigger: 3 }];
+		const out = sanitizeUserSettings({ appearance: { mdRendering: { customSnippets: { snippets, variables: { "${A}": "a" }, other: 1 } } } });
+		assert.deepEqual(out?.appearance?.mdRendering?.customSnippets, { snippets, variables: { "${A}": "a" } });
+	});
+
+	it("drops a snippet set of the wrong shape, which then resolves to the shipped set", () => {
+		for (const customSnippets of [[], "text", 3, null, {}, { snippets: "x" }, { snippets: [], variables: { a: 1 } }, { snippets: [], variables: [] }]) {
+			const out = sanitizeUserSettings({ appearance: { mode: "light", mdRendering: { customSnippets } } });
+			assert.equal(out?.appearance?.mdRendering?.customSnippets, undefined);
+		}
+	});
+
+	it("keeps vim mode only when it is a boolean", () => {
+		assert.equal(sanitizeUserSettings({ appearance: { vimMode: true } })?.appearance?.vimMode, true);
+		assert.equal(sanitizeUserSettings({ appearance: { vimMode: false } })?.appearance?.vimMode, false);
+		assert.equal(sanitizeUserSettings({ appearance: { vimMode: "on", mode: "light" } })?.appearance?.vimMode, undefined);
 	});
 
 	it("empty strings/whitespace fontFamily → null (Source Sans 3); wrong-type → null too (the default)", () => {

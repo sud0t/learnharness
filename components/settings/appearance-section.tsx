@@ -42,6 +42,7 @@ import { Hint } from "@/components/ui/hint";
 import { useAppearance } from "./appearance.tsx";
 import { FontMenuList } from "./model-menu";
 import { CommitInput, SettingsMenuTrigger, SettingsRow, ThinSelect, Toggle } from "./controls.tsx";
+import { SnippetEditor } from "./snippet-editor.tsx";
 
 /** The factory reading family — the DEFAULT row's identity (unset =
  *  this). Exported for tests. */
@@ -95,10 +96,11 @@ export function AppearanceSection({
 	/** The record's appearance delta (absent = factory). */
 	appearance: AppearanceSettings | undefined;
 	/** PUT the whole appearance section; the page re-applies on success. */
-	onSectionChange: (next: AppearanceSettings) => void;
+	onSectionChange: (next: AppearanceSettings) => void | Promise<boolean>;
 }) {
 	const { appearance: resolved } = useAppearance();
 	const md = appearance?.mdRendering;
+	const mathOn = (md?.userMarkdown ?? true) && (md?.userMath ?? true);
 
 	// The font dropdown's open state + its enumeration cache. undefined =
 	// not enumerated yet (desktop: click-bound queryLocalFonts pending);
@@ -352,6 +354,20 @@ export function AppearanceSection({
 					onChange={(on) => onSectionChange({ ...appearance, mdRendering: { ...md, userMath: on } })}
 				/>
 			</SettingsRow>
+			<SettingsRow
+				label="LaTeX snippets"
+				hint="Off keeps the text box from expanding math shortcuts"
+				testid="row-latex-snippets"
+				dimmed={!mathOn}
+			>
+				<Toggle
+					checked={md?.latexSnippets ?? true}
+					disabled={!mathOn}
+					label="latex snippets"
+					onChange={(on) => onSectionChange({ ...appearance, mdRendering: { ...md, latexSnippets: on } })}
+				/>
+			</SettingsRow>
+			<SnippetEditor appearance={appearance} onSectionChange={onSectionChange} disabled={!mathOn || !(md?.latexSnippets ?? true)} />
 			<SettingsRow
 				label="Format as you type"
 				hint="Off keeps the text box plain"

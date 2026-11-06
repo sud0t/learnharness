@@ -5,6 +5,7 @@ import { ArrowRightIcon, CornerDownLeftIcon, SquareIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { LivePathInput } from "@/components/live-path-input";
 import { AttachFilesButton } from "@/components/attach-files-button";
+import { isVimSave } from "@/components/path-input-vim";
 
 /**
  * The chat composer — content row ONLY (the persistent rounded shell lives in
@@ -27,12 +28,14 @@ export function enterAction(state: {
 	/** The between-problems pause is live: practice session, nothing
 	 *  active, no turn/compaction in flight (the caller's fold). */
 	nextProblem?: boolean;
+	/** The press is vim's `:w`, which sends and never stops a stream. */
+	save?: boolean;
 }): "stop" | "send" | "next" | "none" {
 	// Composer steering (owner arc 2026-10-03): while a turn runs, typed
 	// text makes Enter a STEER (the queue-and-redirect send); Enter with
 	// an empty composer stays the stop shortcut. The button itself keeps
 	// the square — Stop stays one click away at all times.
-	if (state.busy) return state.canSend ? "send" : "stop";
+	if (state.busy) return state.canSend ? "send" : state.save ? "none" : "stop";
 	if (state.canSend) return "send";
 	if (state.nextProblem) return "next";
 	return "none";
@@ -139,8 +142,8 @@ export function Composer({
 	 *  empty-Enter share it. */
 	onNext?: () => void;
 }) {
-	const act = () => {
-		const action = enterAction({ busy, canSend, nextProblem });
+	const act = (save = false) => {
+		const action = enterAction({ busy, canSend, nextProblem, save });
 		if (action === "stop") onStop();
 		else if (action === "send") onSend();
 		else if (action === "next") onNext?.();
@@ -177,7 +180,7 @@ export function Composer({
 					// across every input in the app (thinking field, answers).
 					if (e.key === "Enter" && (e.metaKey || e.ctrlKey || !e.shiftKey)) {
 						e.preventDefault();
-						act();
+						act(isVimSave(e.nativeEvent));
 					}
 				}}
 				placeholder={placeholder}

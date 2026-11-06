@@ -32,6 +32,7 @@ import { WRITABLE_TOOL_KEYS } from "../core/pending.ts";
 import { isSearchEngineId, SEARCH_ENGINES } from "../core/search.ts";
 import { isDictationLanguage } from "../core/dictation.ts";
 import { parseFileAccessSettings } from "../core/file-access.ts";
+import { isSnippetData } from "../core/latex-suite/snippet-data.ts";
 
 /** Parsed-or-rejected — `ok: false` carries the 400's error message. */
 export type SettingsBodyResult<T> =
@@ -232,7 +233,7 @@ function parseHexOrNull(value: unknown, field: string): { color?: string | null;
 }
 
 /** appearance: { mode?, background?, fontFamily?, proseFontSize?,
- *  sessionNameSerif?, mdRendering? } */
+ *  sessionNameSerif?, vimMode?, autoPairBrackets?, autoPairMarkdown?, mdRendering? } */
 export function parseAppearanceSettingsBody(body: unknown): SettingsBodyResult<AppearanceSettings> {
 	const raw = asRecord(body);
 	if (!raw) return { ok: false, error: "Invalid JSON body" };
@@ -270,6 +271,19 @@ export function parseAppearanceSettingsBody(body: unknown): SettingsBodyResult<A
 			return { ok: false, error: "sessionNameSerif must be a boolean" };
 		}
 		settings.sessionNameSerif = raw.sessionNameSerif;
+	}
+	if (raw.vimMode !== undefined) {
+		if (typeof raw.vimMode !== "boolean") {
+			return { ok: false, error: "vimMode must be a boolean" };
+		}
+		settings.vimMode = raw.vimMode;
+	}
+	for (const key of ["autoPairBrackets", "autoPairMarkdown"] as const) {
+		if (raw[key] === undefined) continue;
+		if (typeof raw[key] !== "boolean") {
+			return { ok: false, error: `${key} must be a boolean` };
+		}
+		settings[key] = raw[key];
 	}
 	if (raw.mdRendering !== undefined) {
 		const md = asRecord(raw.mdRendering);
@@ -313,6 +327,20 @@ export function parseAppearanceSettingsBody(body: unknown): SettingsBodyResult<A
 				return { ok: false, error: "mdRendering.formatAsYouType must be a boolean" };
 			}
 			rendering.formatAsYouType = md.formatAsYouType;
+		}
+		if (md.latexSnippets !== undefined) {
+			if (typeof md.latexSnippets !== "boolean") {
+				return { ok: false, error: "mdRendering.latexSnippets must be a boolean" };
+			}
+			rendering.latexSnippets = md.latexSnippets;
+		}
+		// The shape only. Entries are the editor's to check: a stored set with a bad
+		// entry must not make every later appearance write fail.
+		if (md.customSnippets !== undefined) {
+			if (!isSnippetData(md.customSnippets)) {
+				return { ok: false, error: "mdRendering.customSnippets must be a snippet set" };
+			}
+			rendering.customSnippets = md.customSnippets;
 		}
 		if (Object.keys(rendering).length) settings.mdRendering = rendering;
 	}

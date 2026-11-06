@@ -27,9 +27,13 @@
 	"dependencies": {
 		"@earendil-works/pi-agent-core": "1.4.0",
 		"@earendil-works/pi-ai": "1.4.0",
+		"@lezer/common": "1.5.2",
+		"@lezer/lr": "1.4.10",
+		"@lezer/markdown": "1.7.2",
 		"@modelcontextprotocol/sdk": "1.32.1",
 		"@mozilla/readability": "^0.6.0",
 		"@radix-ui/react-use-controllable-state": "^1.2.6",
+		"@replit/codemirror-vim-core": "0.1.0",
 		"@resvg/resvg-js": "^2.6.2",
 		"@rive-app/react-webgl2": "^4.32.1",
 		"@silvia-odwyer/photon-node": "0.3.4",
@@ -83,6 +87,7 @@
 		"katex": "$katex"
 	},
 	"devDependencies": {
+		"@lezer/generator": "1.8.0",
 		"@next/eslint-plugin-next": "^16.4.3",
 		"@tailwindcss/postcss": "^4.3.3",
 		"@types/node": "^24.0.0",

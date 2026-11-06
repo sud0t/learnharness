@@ -255,6 +255,90 @@ body {
 	line-height: 1.25;
 }
 
+/* Vim mode shows only through the cursor's shape. A block must not blink away
+   the character it sits on. */
+[data-vim="normal"],
+[data-vim="visual"] {
+	caret-shape: block;
+	caret-animation: manual;
+}
+[data-vim="replace"] {
+	caret-shape: underscore;
+}
+::highlight(lh-vim-search) {
+	background-color: color-mix(in srgb, var(--color-primary) 30%, transparent);
+}
+/* Visual block has more ranges than a browser selection can hold. */
+::highlight(lh-vim-selection) {
+	background-color: color-mix(in srgb, var(--color-primary) 40%, transparent);
+}
+/* The character under the block, which takes the color of the text it sits on. */
+::highlight(lh-vim-cursor) {
+	color: var(--color-foreground);
+}
+/* The other cursors of a block insert. */
+::highlight(lh-vim-caret) {
+	background-color: var(--color-foreground);
+	color: var(--color-background);
+}
+/* The same at a line's end, where no character is there to paint. */
+.lh-vim-end-caret {
+	display: inline-block;
+	width: 0.6em;
+	height: 1lh;
+	margin-right: -0.6em;
+	vertical-align: top;
+	background-color: var(--color-foreground);
+	pointer-events: none;
+	user-select: none;
+}
+/* Snippet stops still ahead, in Latex Suite's three colors. */
+::highlight(lh-tabstop-0) {
+	background-color: #87cefa2e;
+}
+::highlight(lh-tabstop-1) {
+	background-color: #ffa50033;
+}
+::highlight(lh-tabstop-2) {
+	background-color: #00ff0022;
+}
+/* The other copies of a mirrored stop, which take what the caret's copy takes. */
+::highlight(lh-tabstop-mirror) {
+	background-color: color-mix(in srgb, var(--color-primary) 22%, transparent);
+	text-decoration: underline dotted var(--color-primary);
+}
+/* The `:` and `/` prompt, which sits outside the box's clipping and its layout. */
+.lh-vim-prompt {
+	position: fixed;
+	z-index: 50;
+	display: flex;
+	box-sizing: border-box;
+	border: 1px solid var(--color-border);
+	border-radius: 0.5rem;
+	background: var(--color-card);
+	padding: 0.25rem 0.5rem;
+	color: var(--color-foreground);
+	font-family: var(--font-mono);
+	font-size: 0.875rem;
+	line-height: 1.25rem;
+}
+.lh-vim-prompt > div {
+	min-width: 0;
+	flex: 1;
+}
+.lh-vim-prompt input {
+	min-width: 0;
+	border: 0;
+	background: transparent;
+	color: inherit;
+	font: inherit;
+	outline: none;
+}
+.lh-vim-prompt .cm-vim-message {
+	color: var(--color-destructive) !important;
+	white-space: pre-wrap !important;
+}
+
 /* Format as you type. Every source character stays in the editor: symbols and
    equation source are hidden with display, never removed, so neither the caret
    nor the sent text is touched. Sizes and colors follow the transcript. */

@@ -31,6 +31,9 @@ export function resolveAppearance(delta: AppearanceSettings | undefined) {
 		fontFamily: delta?.fontFamily ?? f.fontFamily,
 		proseFontSize: delta?.proseFontSize ?? f.proseFontSize,
 		sessionNameSerif: delta?.sessionNameSerif ?? f.sessionNameSerif,
+		vimMode: delta?.vimMode ?? f.vimMode,
+		autoPairBrackets: delta?.autoPairBrackets ?? f.autoPairBrackets,
+		autoPairMarkdown: delta?.autoPairMarkdown ?? f.autoPairMarkdown,
 		mdRendering: {
 			headingWeight: delta?.mdRendering?.headingWeight ?? f.mdRendering.headingWeight,
 			boldColor: delta?.mdRendering?.boldColor ?? f.mdRendering.boldColor,
@@ -38,6 +41,8 @@ export function resolveAppearance(delta: AppearanceSettings | undefined) {
 			userMarkdown: delta?.mdRendering?.userMarkdown ?? f.mdRendering.userMarkdown,
 			userMath: delta?.mdRendering?.userMath ?? f.mdRendering.userMath,
 			formatAsYouType: delta?.mdRendering?.formatAsYouType ?? f.mdRendering.formatAsYouType,
+			latexSnippets: delta?.mdRendering?.latexSnippets ?? f.mdRendering.latexSnippets,
+			customSnippets: delta?.mdRendering?.customSnippets ?? f.mdRendering.customSnippets,
 		},
 	};
 }

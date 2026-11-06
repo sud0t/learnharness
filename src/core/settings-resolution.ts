@@ -208,6 +208,9 @@ export function resolveSettings(record: UserSettings | null): EffectiveSettings 
 			fontFamily: appearance.fontFamily ?? factoryAppearance.fontFamily,
 			proseFontSize: appearance.proseFontSize ?? factoryAppearance.proseFontSize,
 			sessionNameSerif: appearance.sessionNameSerif ?? factoryAppearance.sessionNameSerif,
+			vimMode: appearance.vimMode ?? factoryAppearance.vimMode,
+			autoPairBrackets: appearance.autoPairBrackets ?? factoryAppearance.autoPairBrackets,
+			autoPairMarkdown: appearance.autoPairMarkdown ?? factoryAppearance.autoPairMarkdown,
 			mdRendering: {
 				headingWeight: md.headingWeight ?? factoryMd.headingWeight,
 				boldColor: md.boldColor ?? factoryMd.boldColor,
@@ -215,6 +218,8 @@ export function resolveSettings(record: UserSettings | null): EffectiveSettings 
 				userMarkdown: md.userMarkdown ?? factoryMd.userMarkdown,
 				userMath: md.userMath ?? factoryMd.userMath,
 				formatAsYouType: md.formatAsYouType ?? factoryMd.formatAsYouType,
+				latexSnippets: md.latexSnippets ?? factoryMd.latexSnippets,
+				customSnippets: md.customSnippets ?? factoryMd.customSnippets,
 			},
 		},
 		graph: {

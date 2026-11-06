@@ -40,7 +40,7 @@ import {
 	type UserSettings,
 } from "@/src/core";
 import { useAppearance } from "./appearance.tsx";
-import { SettingsSection } from "./controls.tsx";
+import { SettingsRow, SettingsSection, Toggle } from "./controls.tsx";
 import { UpdateSettings } from "./update-settings.tsx";
 import { AgentSection } from "./agent-section.tsx";
 import type { ModelsSettings } from "@/src/core";
@@ -242,7 +242,7 @@ export function SettingsDialogBody({
 					error?: string;
 				};
 				setError(`${section}: ${detail.error ?? res.status}`);
-				return;
+				return false;
 			}
 			// Server truth, never the request body (fix wave, owner repro):
 			// the models section clamps pinned thinking levels on write
@@ -259,6 +259,7 @@ export function SettingsDialogBody({
 			notifySettingsSaved(section);
 			if (section === "appearance")
 				onAppearanceChange(body as AppearanceSettings);
+			return true;
 		},
 		[onAppearanceChange],
 	);
@@ -406,7 +407,7 @@ export function SettingsDialogBody({
 									<AppearanceSection
 										appearance={record.appearance}
 										onSectionChange={(next: AppearanceSettings) =>
-											void write("appearance", next)
+											write("appearance", next)
 										}
 									/>
 								</SettingsSection>
@@ -430,6 +431,45 @@ export function SettingsDialogBody({
 									hint="Stored on this device"
 									testid="section-keyboard"
 								>
+									<SettingsRow
+										label="Vim mode"
+										hint="In every box you write in. Boxes start in normal mode."
+										testid="row-vim-mode"
+									>
+										<Toggle
+											checked={record.appearance?.vimMode ?? false}
+											label="vim mode"
+											onChange={(on) =>
+												void write("appearance", { ...record.appearance, vimMode: on })
+											}
+										/>
+									</SettingsRow>
+									<SettingsRow
+										label="Auto pair brackets"
+										hint="In every box you write in. Closes brackets and quotes."
+										testid="row-auto-pair-brackets"
+									>
+										<Toggle
+											checked={record.appearance?.autoPairBrackets ?? true}
+											label="auto pair brackets"
+											onChange={(on) =>
+												void write("appearance", { ...record.appearance, autoPairBrackets: on })
+											}
+										/>
+									</SettingsRow>
+									<SettingsRow
+										label="Auto pair Markdown"
+										hint="In every box you write in. Closes *, _ and backticks."
+										testid="row-auto-pair-markdown"
+									>
+										<Toggle
+											checked={record.appearance?.autoPairMarkdown ?? true}
+											label="auto pair markdown"
+											onChange={(on) =>
+												void write("appearance", { ...record.appearance, autoPairMarkdown: on })
+											}
+										/>
+									</SettingsRow>
 									<KeyboardSection />
 								</SettingsSection>
 							)}

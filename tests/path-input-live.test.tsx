@@ -10,7 +10,7 @@ import { parseHTML } from "linkedom";
 import { LivePathInput } from "../components/live-path-input.tsx";
 import { PathInput } from "../components/path-input.tsx";
 import {
-	atPreviewEnd, keepPreviewInView, LIVE_WIDGET_ATTRIBUTE, pathInputOffset, pathInputPoint, previewArrowTarget, readPathInput, renderLiveInput, renderPathInput,
+	atPreviewEnd, keepPreviewInView, LIVE_WIDGET_ATTRIBUTE, pathInputOffset, pathInputPoint, previewArrowTarget, readPathInput, readPathSelection, renderLiveInput, renderPathInput,
 	restorePathSelection, revealLiveInput, settleLiveCaret,
 } from "../components/path-input-dom.ts";
 import { LIVE_FORMAT_LIMIT, quoteFilePath, readLiveFormat, type LiveFormatOptions } from "../src/core/index.ts";
@@ -90,6 +90,21 @@ describe("drawing a formatted draft", () => {
 		const { root, format } = draw(value);
 		assert.equal(format.items.length, LIVE_FORMAT_LIMIT / 5);
 		assert.equal(readPathInput(root), value);
+	});
+});
+
+describe("TeX that KaTeX cannot read", () => {
+	it("shows muted for a ParseError", () => {
+		assert.match(draw("$\\frac$ tail").root.innerHTML, /katex-error/);
+	});
+	for (const tex of ["\\begin{a b}x\\end{a b}", "\\begin{a~b}", "\\begin{pmatrix}a\\end{pma~trix}", "\\begin{\\quad}"]) {
+		it(`does not throw for ${tex}, which is a plain Error to KaTeX`, () => {
+			const { innerHTML } = draw(`$${tex}$ tail`).root;
+			assert.match(innerHTML, /katex-error/);
+		});
+	}
+	it("keeps the source from being read as markup", () => {
+		assert.equal(draw("$\\begin{a b}<i>$ tail").root.querySelector("i"), null);
 	});
 });
 
@@ -291,6 +306,93 @@ describe("the mounted editor", () => {
 		await editor.fire("blur", {});
 		assert.equal(editor.showing(), 2, "focus is still reported here");
 		(editor.doc.activeElement as HTMLElement | null)?.blur?.();
+	});
+
+	/** A caret drawn far below a box that is scrolled away from it. */
+	const scrolledAway = (root: HTMLElement) => {
+		root.getBoundingClientRect = () => ({ top: 0, bottom: 100, left: 0, right: 300 }) as DOMRect;
+		Object.defineProperties(root, { clientHeight: { value: 100 }, clientWidth: { value: 300 }, clientTop: { value: 0 }, clientLeft: { value: 0 } });
+		(root.ownerDocument as unknown as { createRange: () => unknown }).createRange = () => ({
+			setStart() {}, setEnd() {}, collapse() {}, selectNode() {},
+			getClientRects: () => [{ top: 500, bottom: 522, left: 5, right: 5, height: 22 }],
+		});
+		root.scrollTop = 40;
+	};
+
+	it("leaves a box the learner scrolled alone on keys that move nothing", async () => {
+		const editor = await mount("plain words");
+		await editor.select(3);
+		scrolledAway(editor.root);
+		await editor.fire("keydown", { key: "Control", ctrlKey: true });
+		assert.equal(editor.root.scrollTop, 40);
+	});
+
+	it("follows the caret when showing symbols moves the text", async () => {
+		const editor = await mount("**b** rest");
+		await editor.select(9);
+		scrolledAway(editor.root);
+		await editor.select(4);
+		assert.equal(editor.showing(), 2);
+		assert.equal(editor.root.scrollTop, 462);
+	});
+
+	it("follows a caret settled outside hidden symbols", async () => {
+		const editor = await mount("**b** rest");
+		await editor.select(9);
+		scrolledAway(editor.root);
+		await editor.select(3);
+		assert.equal(readPathSelection(editor.root)?.focus, 5);
+		assert.equal(editor.root.scrollTop, 462);
+	});
+
+	/** A box whose offsets all draw at one spot, until symbols appear and push them down. */
+	const pushedBySymbols = (editor: Awaited<ReturnType<typeof mount>>, before: number, after: number) => {
+		const { root } = editor;
+		scrolledAway(root);
+		(root.ownerDocument as unknown as { createRange: () => unknown }).createRange = () => ({
+			setStart() {}, setEnd() {}, collapse() {}, selectNode() {},
+			getClientRects: () => {
+				const top = (editor.showing() ? after : before) + 40 - root.scrollTop;
+				return [{ top, bottom: top + 22, left: 5, right: 5, height: 22 }];
+			},
+		});
+	};
+	it("follows a selection's end that showing symbols pushes out of the box", async () => {
+		const editor = await mount("**b** rest and more");
+		await editor.select(19);
+		pushedBySymbols(editor, 50, 150);
+		await editor.select(19, 3);
+		assert.equal(editor.showing(), 2);
+		assert.equal(editor.root.scrollTop, 112);
+	});
+	it("follows a selection's end to the spot it has, when one offset is two spots around a preview", async () => {
+		const editor = await mount("$$a$$b c");
+		await editor.select(8);
+		const { root } = editor;
+		const tail = [...root.querySelectorAll("*"), root].flatMap((element) => [...element.childNodes]).find((node) => node.nodeType === 3 && node.textContent === "b c")!;
+		scrolledAway(root);
+		let measured: Node | null = null;
+		(root.ownerDocument as unknown as { createRange: () => unknown }).createRange = () => ({
+			setStart(node: Node) { measured = node; }, setEnd() {}, collapse() {}, selectNode() {},
+			// The source ends in the box, and the text past the preview goes far below it.
+			getClientRects: () => {
+				const top = (measured === tail && editor.showing() ? 200 : 60) + 40 - root.scrollTop;
+				return [{ top, bottom: top + 22, left: 5, right: 5, height: 22 }];
+			},
+		});
+		root.ownerDocument.getSelection()!.setBaseAndExtent(tail, 3, tail, 0);
+		await editor.fire("selectionchange", {}, editor.doc);
+		assert.equal(readPathSelection(root)?.focus, 5);
+		assert.ok(editor.showing() > 0);
+		assert.equal(root.scrollTop, 162);
+	});
+	it("leaves the box alone when a selection's end was already out of it, as select-all's is", async () => {
+		const editor = await mount("**b** rest and more");
+		await editor.select(9);
+		pushedBySymbols(editor, 500, 600);
+		await editor.select(0, 19);
+		assert.equal(editor.showing(), 2);
+		assert.equal(editor.root.scrollTop, 40);
 	});
 
 	it("deletes in the model, keeping hidden symbols", async () => {

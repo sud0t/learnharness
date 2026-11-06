@@ -31,9 +31,27 @@ describe("resolveAppearance — delta over factory", () => {
 		assert.equal(a.fontFamily, null);
 		assert.equal(a.proseFontSize, 16);
 		assert.equal(a.sessionNameSerif, true);
+		assert.equal(a.vimMode, false);
 		assert.deepEqual(a.mdRendering, {
-			headingWeight: 900, boldColor: null, italicColor: null, userMarkdown: true, userMath: true, formatAsYouType: true,
+			headingWeight: 900, boldColor: null, italicColor: null, userMarkdown: true, userMath: true, formatAsYouType: true, latexSnippets: true, customSnippets: null,
 		});
+		assert.equal(a.autoPairBrackets, true);
+		assert.equal(a.autoPairMarkdown, true);
+	});
+
+	it("a saved choice of auto pairs wins over the default, one kind at a time", () => {
+		const brackets = resolveAppearance({ autoPairBrackets: false }), markdown = resolveAppearance({ autoPairMarkdown: false });
+		assert.deepEqual([brackets.autoPairBrackets, brackets.autoPairMarkdown], [false, true]);
+		assert.deepEqual([markdown.autoPairBrackets, markdown.autoPairMarkdown], [true, false]);
+	});
+
+	it("a saved snippet set carries through", () => {
+		const customSnippets = { snippets: [{ trigger: "a", replacement: "b", options: "tA" }] };
+		assert.equal(resolveAppearance({ mdRendering: { customSnippets } }).mdRendering.customSnippets, customSnippets);
+	});
+
+	it("a saved vim mode wins over the default", () => {
+		assert.equal(resolveAppearance({ vimMode: true }).vimMode, true);
 	});
 
 	it("explicit deltas win field-by-field", () => {

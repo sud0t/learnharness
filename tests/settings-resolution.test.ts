@@ -41,6 +41,10 @@ describe("resolveSettings", () => {
 		assert.equal(eff.appearance.fontFamily, null);
 		assert.equal(eff.appearance.proseFontSize, 16);
 		assert.equal(eff.appearance.sessionNameSerif, true);
+		assert.equal(eff.appearance.vimMode, false);
+		assert.equal(eff.appearance.autoPairBrackets, true);
+		assert.equal(eff.appearance.autoPairMarkdown, true);
+		assert.equal(eff.appearance.mdRendering.customSnippets, null);
 		assert.equal(eff.appearance.mdRendering.headingWeight, 900);
 		// wave 7 collapse: the master switch ONLY + the redesign's chunk
 		// budget — absent record resolves the factory 4096 (halved back

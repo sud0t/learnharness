@@ -116,7 +116,9 @@ describe("parseAppearanceSettingsBody", () => {
 			fontFamily: "Some Font",
 			proseFontSize: 20,
 			sessionNameSerif: false,
-			mdRendering: { headingWeight: 700, boldColor: "#ff8800", italicColor: null, userMarkdown: false, userMath: false, formatAsYouType: false },
+			autoPairBrackets: false,
+			autoPairMarkdown: false,
+			mdRendering: { headingWeight: 700, boldColor: "#ff8800", italicColor: null, userMarkdown: false, userMath: false, formatAsYouType: false, latexSnippets: false, customSnippets: { snippets: [] } },
 		});
 		assert.ok(r.ok);
 		assert.deepEqual(r.settings, {
@@ -125,8 +127,17 @@ describe("parseAppearanceSettingsBody", () => {
 			fontFamily: "Some Font",
 			proseFontSize: 20,
 			sessionNameSerif: false,
-			mdRendering: { headingWeight: 700, boldColor: "#ff8800", italicColor: null, userMarkdown: false, userMath: false, formatAsYouType: false },
+			autoPairBrackets: false,
+			autoPairMarkdown: false,
+			mdRendering: { headingWeight: 700, boldColor: "#ff8800", italicColor: null, userMarkdown: false, userMath: false, formatAsYouType: false, latexSnippets: false, customSnippets: { snippets: [] } },
 		});
+	});
+
+	it("takes a stored set with a bad entry, so that toggling another setting can never fail", () => {
+		const customSnippets = { snippets: [{ trigger: 3 }] };
+		const r = parseAppearanceSettingsBody({ vimMode: true, mdRendering: { customSnippets } });
+		assert.ok(r.ok);
+		assert.deepEqual(r.settings.mdRendering?.customSnippets, customSnippets);
 	});
 
 	it("rejects bad enums, ranges, and colors — with specific messages, never clamps", () => {
@@ -144,10 +155,21 @@ describe("parseAppearanceSettingsBody", () => {
 			{ mdRendering: { userMarkdown: "no" } },
 			{ mdRendering: { userMath: 0 } },
 			{ mdRendering: { formatAsYouType: "yes" } },
+			{ mdRendering: { latexSnippets: "yes" } },
+			{ mdRendering: { customSnippets: "text" } },
+			{ mdRendering: { customSnippets: [] } },
+			{ mdRendering: { customSnippets: { variables: {} } } },
+			{ mdRendering: { customSnippets: { snippets: [], variables: { a: 1 } } } },
+			{ autoPairBrackets: "yes" },
+			{ autoPairMarkdown: "yes" },
+			{ vimMode: "yes" },
+			{ vimMode: 1 },
 		];
 		for (const body of cases) {
 			assert.equal(parseAppearanceSettingsBody(body).ok, false, JSON.stringify(body));
 		}
+		assert.ok(parseAppearanceSettingsBody({ vimMode: true }).ok);
+		assert.ok(parseAppearanceSettingsBody({ vimMode: false }).ok);
 		// boundary values that MUST pass: 12 and 24, 100 and 900, #fff
 		assert.ok(parseAppearanceSettingsBody({ proseFontSize: 12 }));
 		assert.ok(parseAppearanceSettingsBody({ proseFontSize: 24 }));
