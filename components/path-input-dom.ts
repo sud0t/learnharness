@@ -207,7 +207,7 @@ function equationHtml(math: LiveMath): string {
 	return html;
 }
 
-export type LiveView = { format: LiveFormat; elements: Map<string, Element[]>; shown: Set<string> };
+export type LiveView = { format: LiveFormat; elements: Map<string, Element[]>; previews: Map<string, Element>; shown: Set<string> };
 
 function lineBox(document: Document, line: LiveLine): HTMLElement {
 	const box = document.createElement("span");
@@ -239,6 +239,7 @@ export function renderLiveInput(root: HTMLElement, value: string, format: LiveFo
 	const fragment = document.createDocumentFragment();
 	const chips: ChipHost[] = [];
 	const elements = new Map<string, Element[]>();
+	const previews = new Map<string, Element>();
 	const track = (key: string, element: Element) => {
 		const list = elements.get(key);
 		if (list) list.push(element); else elements.set(key, [element]);
@@ -287,12 +288,18 @@ export function renderLiveInput(root: HTMLElement, value: string, format: LiveFo
 		}
 		const classes: string[] = [];
 		let key: string | null = null;
+		let below: HTMLElement | null = null;
 		for (const index of active) {
 			const item = format.items[index]!;
 			if (item.kind === "math") {
 				key = `i${index}`;
 				classes.push("lh-lf-hide", "lh-lf-source");
-				if (start === item.start) {
+				// A block equation stays on screen below its source, as the preview
+				// while it is edited. An inline one swaps with its source instead.
+				if (item.display && end === item.end) {
+					below = equationWidget(document, item, index);
+					previews.set(key, below);
+				} else if (!item.display && start === item.start) {
 					const widget = equationWidget(document, item, index);
 					track(key, widget);
 					container.append(widget);
@@ -314,9 +321,19 @@ export function renderLiveInput(root: HTMLElement, value: string, format: LiveFo
 			if (key) track(key, span);
 			container.append(span);
 		} else container.append(text);
+		if (below) {
+			// Without a real line end here the browser draws the caret at the end
+			// of the source beside the preview. Not text: segments() skips it.
+			const lineEnd = document.createElement("br");
+			lineEnd.setAttribute(PATH_CARET_ATTRIBUTE, "");
+			lineEnd.setAttribute("aria-hidden", "true");
+			lineEnd.className = "lh-lf-hide";
+			if (key) track(key, lineEnd);
+			container.append(lineEnd, below);
+		}
 	}
 	commitDrawing(root, value, fragment);
-	return { chips, view: { format, elements, shown: new Set() } };
+	return { chips, view: { format, elements, previews, shown: new Set() } };
 }
 
 /** Show the source of what the selection touches. Toggles attributes only:
@@ -334,6 +351,40 @@ export function revealLiveInput(view: LiveView, selection: TextSelection | null)
 	for (const key of view.shown) if (!next.has(key)) for (const element of view.elements.get(key) ?? []) toggle(element, false);
 	for (const key of next) if (!view.shown.has(key)) for (const element of view.elements.get(key) ?? []) toggle(element, true);
 	view.shown = next;
+}
+
+const blockEquations = (view: LiveView) => view.format.items.filter((item): item is LiveMath => item.kind === "math" && item.display);
+
+/** True at a block equation's end. The DOM has two spots for that one offset,
+ * either side of the preview, and only the one in the source is usable. */
+export function atPreviewEnd(view: LiveView, offset: number): boolean {
+	return blockEquations(view).some((math) => math.end === offset);
+}
+
+/** Where an arrow key goes around a block equation when the browser would get
+ * it wrong: stepping in would skip the hidden source, and stepping out would
+ * stop beside the preview. Null leaves the key to the browser. */
+export function previewArrowTarget(view: LiveView, value: string, offset: number, key: string): number | null {
+	for (const math of blockEquations(view)) {
+		if (key === "ArrowRight" && offset === math.start - 1) return math.start;
+		if ((key === "ArrowRight" || key === "ArrowDown") && offset === math.end) {
+			return Math.min(value.length, offset + (/[\ud800-\udbff]/.test(value[offset] ?? "") ? 2 : 1));
+		}
+	}
+	return null;
+}
+
+/** The browser only scrolls the caret into view, so a preview under the last
+ * line of a tall draft would stay clipped. Never scrolls the source out of view. */
+export function keepPreviewInView(root: HTMLElement, view: LiveView): void {
+	for (const key of view.shown) {
+		const preview = view.previews.get(key);
+		if (!preview) continue;
+		const box = root.getBoundingClientRect(), bottom = preview.getBoundingClientRect().bottom;
+		const source = view.elements.get(key)?.[0]?.getBoundingClientRect().top ?? bottom;
+		const overflow = Math.min(bottom - box.bottom, source - box.top);
+		if (overflow > 0) root.scrollTop += overflow;
+	}
 }
 
 /** A browser treats both sides of hidden symbols as one spot and keeps the

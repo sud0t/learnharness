@@ -10,7 +10,7 @@ import { parseHTML } from "linkedom";
 import { LivePathInput } from "../components/live-path-input.tsx";
 import { PathInput } from "../components/path-input.tsx";
 import {
-	LIVE_WIDGET_ATTRIBUTE, pathInputOffset, pathInputPoint, readPathInput, renderLiveInput, renderPathInput,
+	atPreviewEnd, keepPreviewInView, LIVE_WIDGET_ATTRIBUTE, pathInputOffset, pathInputPoint, previewArrowTarget, readPathInput, renderLiveInput, renderPathInput,
 	restorePathSelection, revealLiveInput, settleLiveCaret,
 } from "../components/path-input-dom.ts";
 import { LIVE_FORMAT_LIMIT, quoteFilePath, readLiveFormat, type LiveFormatOptions } from "../src/core/index.ts";
@@ -117,6 +117,76 @@ describe("revealing source", () => {
 		assert.equal(widget.hasAttribute("contenteditable"), false);
 		revealLiveInput(view, null);
 		assert.equal(widget.getAttribute("contenteditable"), "false");
+	});
+
+	it("keeps a block equation on screen below its source, as its preview", () => {
+		const { root, view } = draw("$$E=mc^2$$\nnext");
+		const widget = root.querySelector(`[${LIVE_WIDGET_ATTRIBUTE}]`)!;
+		const source = root.querySelector(".lh-lf-source")!;
+		assert.equal(source.nextSibling?.nodeName, "BR", "the source ends its own line");
+		assert.equal(source.nextSibling?.nextSibling, widget, "the preview follows the source");
+		revealLiveInput(view, { anchor: 3, focus: 3 });
+		assert.equal(source.hasAttribute("data-show"), true);
+		assert.equal(widget.hasAttribute("data-show"), false, "the preview is not hidden");
+		assert.equal(widget.getAttribute("contenteditable"), "false");
+		revealLiveInput(view, null);
+		assert.equal(source.hasAttribute("data-show"), false);
+	});
+
+	it("gives an equation in a list no preview: it stays inline", () => {
+		const { root, view } = draw("- item $$x$$");
+		assert.equal(view.previews.size, 0);
+		revealLiveInput(view, { anchor: 10, focus: 10 });
+		assert.equal(root.querySelector(`[${LIVE_WIDGET_ATTRIBUTE}]`)!.hasAttribute("data-show"), true);
+	});
+
+	it("draws no preview for an unclosed equation", () => {
+		assert.equal(draw("$$E=mc^2").root.querySelector(`[${LIVE_WIDGET_ATTRIBUTE}]`), null);
+	});
+
+	it("steps arrow keys around a block equation", () => {
+		const value = "ab\n$$x$$\ncd";
+		const { view } = draw(value);
+		const target = (offset: number, key: string) => previewArrowTarget(view, value, offset, key);
+		assert.equal(target(2, "ArrowRight"), 3, "into the hidden source");
+		assert.equal(target(8, "ArrowRight"), 9, "out past the preview");
+		assert.equal(target(8, "ArrowDown"), 9);
+		for (const [offset, key] of [[1, "ArrowRight"], [5, "ArrowRight"], [8, "ArrowLeft"], [8, "ArrowUp"], [2, "ArrowDown"], [9, "ArrowLeft"], [8, "x"]] as const) {
+			assert.equal(target(offset, key), null, `${offset} ${key}`);
+		}
+		assert.equal(atPreviewEnd(view, 8), true);
+		assert.equal(atPreviewEnd(view, 7), false);
+	});
+
+	it("stops arrow keys at the end of a draft, and never splits an emoji", () => {
+		const closed = draw("$$x$$");
+		assert.equal(previewArrowTarget(closed.view, "$$x$$", 5, "ArrowRight"), 5);
+		const emoji = "$$x$$😀";
+		assert.equal(previewArrowTarget(draw(emoji).view, emoji, 5, "ArrowRight"), 7);
+	});
+
+	it("leaves arrow keys alone around inline math", () => {
+		const value = "a\n$x$\nb";
+		const { view } = draw(value);
+		assert.equal(previewArrowTarget(view, value, 1, "ArrowRight"), null);
+		assert.equal(previewArrowTarget(view, value, 5, "ArrowRight"), null);
+	});
+
+	it("scrolls a preview into view without losing its source", () => {
+		const { root, view } = draw("$$x$$");
+		const rect = (top: number, bottom: number) => () => ({ top, bottom }) as DOMRect;
+		root.getBoundingClientRect = rect(0, 100);
+		view.previews.get("i0")!.getBoundingClientRect = rect(90, 140);
+		root.querySelector(".lh-lf-source")!.getBoundingClientRect = rect(70, 90);
+		root.scrollTop = 0;
+		revealLiveInput(view, { anchor: 0, focus: 0 });
+		keepPreviewInView(root, view);
+		assert.equal(root.scrollTop, 40);
+		root.scrollTop = 0;
+		view.previews.get("i0")!.getBoundingClientRect = rect(30, 300);
+		root.querySelector(".lh-lf-source")!.getBoundingClientRect = rect(10, 30);
+		keepPreviewInView(root, view);
+		assert.equal(root.scrollTop, 10, "stops with the source at the top");
 	});
 
 	it("shows a line's markers together", () => {

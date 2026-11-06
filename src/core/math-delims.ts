@@ -177,7 +177,9 @@ export function readMathSources(markdown: string): MathSource[] {
 			: span.open === "\\[" ? !indented(markdown, start)
 			: span.display;
 		sources.push({
-			start, end: offset, bodyEnd: offset - span.close.length, display,
+			start, end: offset, display,
+			// Past any trailing newline, or typing lands on a fence's closing line.
+			bodyEnd: start + span.open.length + span.body.trimEnd().length,
 			tex: span.open === "$" ? replaceEscapedDollars(span.body) : span.body.trim(),
 		});
 	}

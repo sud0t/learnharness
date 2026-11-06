@@ -80,6 +80,11 @@ describe("live format: math", () => {
 		assert.equal(math?.caret, 8, "inside the closing dollar");
 	});
 
+	it("stops the caret in a fence at the end of the equation, not on the closing line", () => {
+		const text = "$$\nx^2\n$$";
+		assert.equal(maths(text)[0]?.caret, text.indexOf("x^2") + 3);
+	});
+
 	it("shows two-dollar math as a block, except where a block would break the line", () => {
 		assert.equal(maths("$$x$$")[0]?.display, true);
 		assert.equal(maths("Before $$x$$ after")[0]?.display, true);
@@ -104,6 +109,11 @@ describe("live format: math", () => {
 
 	it("matches sent messages on dollar amounts", () => {
 		assert.equal(maths("It costs $5 and $10 more")[0]?.tex, "5 and ");
+	});
+
+	it("reads no equation until it is closed", () => {
+		assert.deepEqual(maths("$$E=mc^2"), []);
+		assert.deepEqual(maths("$$\nE=mc^2\n"), []);
 	});
 
 	it("reads none with math off, and Markdown takes the text back", () => {

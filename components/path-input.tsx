@@ -6,8 +6,8 @@ import { FilePathChip } from "./file-path-chip";
 import { cn } from "../lib/utils";
 import { readLiveFormat, type LiveFormatOptions } from "../src/core";
 import {
-	adjacentPathRange, atomicPathRange, clampPathSelection, insertFilePaths,
-	normalizePathEdit, normalizePathInputValue, pathInputStaticRange, PathInputHistory, readPathInput, readPathSelection, renderLiveInput, renderPathInput,
+	adjacentPathRange, atomicPathRange, atPreviewEnd, clampPathSelection, insertFilePaths,
+	normalizePathEdit, normalizePathInputValue, pathInputStaticRange, PathInputHistory, readPathInput, readPathSelection, keepPreviewInView, pathInputPoint, previewArrowTarget, renderLiveInput, renderPathInput,
 	replacePathSelection, restorePathSelection, revealLiveInput, settleLiveCaret, LIVE_WIDGET_ATTRIBUTE,
 	type LiveView, type PathEditSnapshot, type TextSelection,
 } from "./path-input-dom";
@@ -79,7 +79,9 @@ export const PathInput = React.forwardRef<HTMLDivElement, PathInputProps>(functi
 			return { value: current, selection: { ...saved } };
 		}
 		function reveal() {
-			if (view) revealLiveInput(view, document.activeElement === root ? saved : null);
+			if (!view) return;
+			revealLiveInput(view, document.activeElement === root ? saved : null);
+			keepPreviewInView(root, view);
 		}
 		function paint(selection: TextSelection, restore: boolean) {
 			const live = callbacks.current.liveFormat;
@@ -202,6 +204,16 @@ export const PathInput = React.forwardRef<HTMLDivElement, PathInputProps>(functi
 			remember();
 			// selectionchange is asynchronous; a repeating key must not outrun it.
 			if (view && !pressed) releaseHold();
+			if (view && saved.anchor === saved.focus && !event.shiftKey && !event.ctrlKey && !event.metaKey && !event.altKey) {
+				const target = previewArrowTarget(view, current, saved.focus, event.key);
+				if (target !== null) {
+					event.preventDefault();
+					saved = { anchor: target, focus: target };
+					reveal();
+					restorePathSelection(root, saved);
+					return;
+				}
+			}
 			if ((event.metaKey || event.ctrlKey) && !event.altKey && (event.key.toLowerCase() === "z" || event.key.toLowerCase() === "y")) {
 				event.preventDefault();
 				travel(event.key.toLowerCase() === "y" || event.shiftKey ? "redo" : "undo");
@@ -243,6 +255,10 @@ export const PathInput = React.forwardRef<HTMLDivElement, PathInputProps>(functi
 				}
 			}
 			reveal();
+			if (view && saved.anchor === saved.focus && document.activeElement === root && atPreviewEnd(view, saved.focus)) {
+				const selection = document.getSelection(), point = pathInputPoint(root, saved.focus);
+				if (selection?.focusNode !== point.node || selection.focusOffset !== point.offset) restorePathSelection(root, saved);
+			}
 		}
 		function selectionChanged() {
 			remember();
